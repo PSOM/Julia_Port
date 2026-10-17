@@ -87,7 +87,7 @@ function ini_uv(n)
       srcface_nopy(n)
       #@ccall "./PSOM_LIB.so".srcface_nopy_(Ref(n)::Ref{Int})::Cvoid
 
-      calcfkfc()
+      calcfkfc(HOST)
       #@ccall "./PSOM_LIB.so".calcskfc_()::Cvoid
 
       local fac2 = EPS * lambda
