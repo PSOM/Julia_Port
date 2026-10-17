@@ -6,10 +6,8 @@ function sponge(n, dum_time)
   local gamma_T = 1e0 / (dum_time)
 
   for j in 0:spl+1
-    # NOTE: (j-1)/spl is an INTEGER division in sponge.f90 (j and spl are integers), so the
-    # cosine taper is a step: dummy = gamma_T for j=0..15 and cos(pi/2)*gamma_T at j=16.
-    # Kept identical to the Fortran; a smooth taper was probably intended.
-    local dummy = gamma_T * cos(div(j - 1, spl) * PI / 2)
+    # smooth cosine taper (the Fortran originally used an integer division here, giving a step)
+    local dummy = gamma_T * cos((j - 1) / spl * PI / 2)
     if (j == 0)
       dummy = gamma_T
     end
@@ -27,8 +25,7 @@ function sponge(n, dum_time)
 
   for j in NJ-spl:NJ+1
 
-    # integer division as in the Fortran (see note above)
-    local dummy = gamma_T * sin(div(j - (NJ - spl), spl) * PI / 2)
+    local dummy = gamma_T * sin((j - (NJ - spl)) / spl * PI / 2)
     if (j == NJ + 1)
       dummy = gamma_T
     end
