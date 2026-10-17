@@ -17,9 +17,9 @@ function dgtsl(n, c, d, e, b)
                         local t = e[kp1]
                         e[kp1] = e[k]
                         e[k] = t
-                        local t = p[kp1]
-                        p[kp1] = p[k]
-                        p[k] = t
+                        local t = b[kp1]
+                        b[kp1] = b[k]
+                        b[k] = t
                   end
                   if (c[k] == 0e0)
                         return k
