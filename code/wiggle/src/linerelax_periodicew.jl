@@ -1,6 +1,7 @@
-using Random
 function linerelax_segment(chunk, nxm, nym, nzm, cp, p, fn)
-  local seed = Random.seed!(91294)
+  # same random line-start sequence as the Fortran (ran3 keeps its state between calls)
+  local iseed = Ref(91294)
+  ran3(iseed)
   local info = Ref(0)
   local rh = zeros(rc_kind, NK)
   local subd = zeros(rc_kind, NK)
@@ -8,7 +9,7 @@ function linerelax_segment(chunk, nxm, nym, nzm, cp, p, fn)
   local dia = zeros(rc_kind, NK)
   for j in chunk
     #local istart = div(NI, 2)
-    local istart = Int(floor(rand(seed) * (nxm+1)))
+    local istart = trunc(Int, ran3(iseed) * (nxm+1))
     for ii in 1:nxm
       local i = ii + istart
       i = mod(i-1, nxm) + 1

@@ -104,8 +104,10 @@ function ini_st()
    #-offset      yfront = (yc(NJ+1) +yc(0))/3.d0  #used for many MLI runs  
 
    #     ADD a PERTURBATION to the width of the front                      
-   #iseed = Random.seed!(10)
-   #dum = rand(iseed)
+   # The value is unused, but this first ran3 call seeds the generator (as in ini_st.f90):
+   # the later ran3(91294) calls in linerelax do not reseed, so their sequence starts from here.
+   local iseed = Ref(44294)
+   local dum = ran3(iseed)
 
    #     z1 is the depth of the ml (diff rho on both sides above this depth
    #     z2 is the vertical extent of the density anamoly (it is gradually 
