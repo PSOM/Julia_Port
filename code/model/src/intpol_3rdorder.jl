@@ -37,7 +37,7 @@
       end
       cxf[i,j,k] = ( xa * (ux[i0, j] * cx[i0, j, k] + ux[ip1, j] * cx[ip1, j, k])
                      + xb * (ux[im1, j] * cx[im1, j, k] + ux[ip2, j] * cx[ip2, j, k])
-                     + 0.5e0 * (uy[i0, j] * cy[i0+1, j+1, k+1] + uy[ip1, j] * cy[ip1+1, j+1, k+1])) * Jifc[i, j, k]
+                     + 0.5e0 * (uy[i0, j] * cy[i0, j, k] + uy[ip1, j] * cy[ip1, j, k])) * Jifc[i, j, k]
    end
 end
 

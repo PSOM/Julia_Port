@@ -116,7 +116,7 @@ end
       local vcif = EPS * (xa * (uvis[i, j0, k] + uvis[i, jp1, k]) + xb * (uvis[i, jm1, k] + uvis[i, jp2, k]))
       local vcjf = EPS * (xa * (vvis[i, j0, k] + vvis[i, jp1, k]) + xb * (vvis[i, jm1, k] + vvis[i, jp2, k]))
 
-      sjfc[i, j, k] = ((vxj * (-ffj[i, j] * vint + fac * bbj[i, j+1] * wint - vcif)
+      sjfc[i, j, k] = ((vxj * (-ffj[i, j] * vint + fac * bbj[i, j] * wint - vcif)
       + vyj * ( ffc[i, j] * uint - vcjf)) * Jjfc[i, j, k] + grpjfc[i, j, k]) + py
     end
   end
