@@ -16,7 +16,7 @@ function uv_geostrophic(ugeo, vgeo)
    #    &     psig,pgrad,con,pz                                            
    #     real(kind=rc_kind), dimension (0:NI+1,0:NJ+1,0:NK+1) :: ugeo, vgeo
 
-   rpevalgrad_Song(0)
+   rpevalgrad_Song(0, HOST)
    #@ccall "./PSOM_LIB.so".rpevalgrad_song_(Ref(0)::Ref{Int})::Cvoid
 
    local kaph1 = 1e0 - kappah

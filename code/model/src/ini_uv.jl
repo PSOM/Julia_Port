@@ -21,7 +21,7 @@ function ini_uv(n)
    local kmax = 0
 
    if (use_shchepetkin == 0) # calculates baroclinic press gradients
-      rpevalgrad_Song(n)
+      rpevalgrad_Song(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_song_(Ref(n)::Ref{Int})::Cvoid
    else
       rpevalgrad_Sche(n)
