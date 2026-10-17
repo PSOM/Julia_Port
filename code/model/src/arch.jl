@@ -39,6 +39,7 @@ else
     error("PSOM_BACKEND=$(PSOM_BACKEND): use cpu, cuda, amdgpu or jlarray")
 end
 const on_cpu = backend isa KA.CPU
+println("PSOM backend: ", PSOM_BACKEND, " (", nameof(typeof(backend)), ")")
 
 # device array with the same index offsets as the host array A (A itself on the CPU backend)
 to_dev(A::AbstractArray) = on_cpu ? A : adapt(DevArray, A)

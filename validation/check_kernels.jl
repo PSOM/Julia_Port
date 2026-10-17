@@ -37,6 +37,18 @@ function forbidden_names(hdr_files, param_file)
     return bad
 end
 
+# names of the header arrays (const globals assigned something that is not a literal)
+function header_arrays(hdr_files)
+    out = Set{Symbol}()
+    for f in hdr_files
+        isfile(f) || continue
+        for m in eachmatch(r"^\s*global\s+const\s+([A-Za-z_][A-Za-z_0-9]*)\s*=\s*(OffsetArray|@fortGetArr|zeros)"m, read(f, String))
+            push!(out, Symbol(m.captures[1]))
+        end
+    end
+    return out
+end
+
 argname(a) = a isa Symbol ? a :
              a isa Expr && a.head == :(::) ? argname(a.args[1]) :
              a isa Expr && a.head == :macrocall ? argname(a.args[end]) :
@@ -87,10 +99,41 @@ function kernels(ex, out=[])
     return out
 end
 
+# kernel launches: launch!(S, k, ranges, args...) and k(backend, ...)(args...; ndrange): every argument
+# that is a header array must be passed as S.name (or another array set), never by its global name
+function launch_args(ex, out=[])
+    if ex isa Expr
+        if ex.head == :call && ex.args[1] == :launch!
+            append!(out, [(a, "launch!") for a in ex.args[5:end]])
+        elseif ex.head == :call && ex.args[1] isa Expr && ex.args[1].head == :call &&
+               ex.args[1].args[1] isa Symbol && startswith(string(ex.args[1].args[1]), "k_")
+            append!(out, [(a, string(ex.args[1].args[1])) for a in ex.args[2:end] if !(a isa Expr && a.head == :parameters)])
+        elseif ex.head == :macrocall && ex.args[1] == Symbol("@kernel")
+            return out
+        end
+        foreach(a -> launch_args(a, out), ex.args)
+    end
+    return out
+end
+# function definitions (long and short form), outside kernels
+function functions(ex, out=[])
+    if ex isa Expr
+        if ex.head == :macrocall && ex.args[1] == Symbol("@kernel")
+            return out
+        elseif ex.head == :function || (ex.head == :(=) && ex.args[1] isa Expr && ex.args[1].head == :call)
+            push!(out, ex)
+            return out
+        end
+        foreach(a -> functions(a, out), ex.args)
+    end
+    return out
+end
+
 nbad = 0
 for exp in exps
     hdr = [joinpath(CODE, "model", "src", "header.jl"), joinpath(CODE, exp, "src", "header.jl")]
     bad = forbidden_names(hdr, joinpath(CODE, "model", "inc", "ini_param.jl"))
+    hdrarrays = header_arrays(hdr)
     dirs = exp == "model" ? [joinpath(CODE, "model", "src")] : [joinpath(CODE, exp, "src")]
     for d in dirs, f in sort(filter(endswith(".jl"), readdir(d)))
         for k in kernels(Meta.parseall(read(joinpath(d, f), String)))
@@ -102,6 +145,18 @@ for exp in exps
             if !isempty(hits)
                 global nbad += 1
                 println("$(joinpath(basename(d) == "src" ? basename(dirname(d)) : d, f)): kernel $name uses globals: ", join(hits, ", "))
+            end
+        end
+        for fdef in functions(Meta.parseall(read(joinpath(d, f), String)))
+            sig, body = fdef.args[1], fdef.args[2]
+            sig isa Expr && sig.head == :where && (sig = sig.args[1])
+            fargs = sig isa Expr && sig.head == :call ? Set(filter(!isnothing, map(argname, sig.args[2:end]))) : Set{Symbol}()
+            flocals = assigned!(Set{Symbol}(), body)
+            for (a, k) in launch_args(body)
+                if a isa Symbol && a in hdrarrays && !(a in fargs) && !(a in flocals)
+                    global nbad += 1
+                    println("$(joinpath(basename(dirname(d)), f)): $k is passed the host array `$a` (use S.$a)")
+                end
             end
         end
     end

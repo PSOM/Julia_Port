@@ -172,6 +172,11 @@ function step!(pcorr, step)
     #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
     momentum(pcorr, step)
 
+    # Side effects of diag_n2budget that the next step depends on (diag_n2budget.f90 calls evalrho
+    # and vort every step): rho from the final s, T and the u, v, w ghost points. Done here on the
+    # device; diag_n2budget repeats them on the host, which gives the same values.
+    evalrho(DEV.rho, 0)
+    uvw_halo!(0)
 
     if on_cpu
         diag_n2budget(step)
