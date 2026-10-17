@@ -13,7 +13,10 @@
 # Select the backend with the environment variable PSOM_BACKEND:
 #   cpu (default) | cuda (needs CUDA.jl) | amdgpu (needs AMDGPU.jl) |
 #   jlarray (JLArrays.jl: a GPU array emulated on the CPU; no scalar indexing allowed, so it checks
-#            the GPU code path on a machine without a GPU)
+#            the GPU code path on a machine without a GPU) |
+#   opencl  (OpenCL.jl with the pocl CPU driver: kernels are compiled by the GPU compiler stack
+#            (GPUCompiler -> SPIR-V) and run on the CPU, so it also checks that every kernel compiles
+#            for a GPU: no dynamic dispatch, allocation or exceptions inside kernels)
 
 using KernelAbstractions
 const KA = KernelAbstractions
@@ -28,6 +31,10 @@ elseif PSOM_BACKEND == "amdgpu"
     using AMDGPU
     const backend = ROCBackend()
     const DevArray = ROCArray
+elseif PSOM_BACKEND == "opencl"
+    using pocl_jll, OpenCL
+    const backend = OpenCLBackend()
+    const DevArray = CLArray
 elseif PSOM_BACKEND == "jlarray"
     using JLArrays
     const backend = JLBackend()
@@ -36,7 +43,7 @@ elseif PSOM_BACKEND == "cpu"
     const backend = KA.CPU()
     const DevArray = Array
 else
-    error("PSOM_BACKEND=$(PSOM_BACKEND): use cpu, cuda, amdgpu or jlarray")
+    error("PSOM_BACKEND=$(PSOM_BACKEND): use cpu, cuda, amdgpu, opencl or jlarray")
 end
 const on_cpu = backend isa KA.CPU
 println("PSOM backend: ", PSOM_BACKEND, " (", nameof(typeof(backend)), ")")
