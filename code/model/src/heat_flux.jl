@@ -1,15 +1,39 @@
 
-const global heat_flux_swrd = zeros(rc_kind, (NK))
-const global heat_flux_Kdfluxdzz = zeros(rc_kind, (NK))
+# Tdif(i,j,k) for one point: divergence of the short-wave flux, absorbed with the double-exponential
+# profile of the water type (J_A, J_lambda1, J_lambda2) at the centre column; surface flux at NK, none
+# through the bottom. The profile is recomputed per point (the Fortran keeps swrd, Kdfluxdzz per column).
+@inline function hf_Kdfluxdzz(swr, zf, j, k, J_A, J_lambda1, J_lambda2)
+    local swrd = swr[j] * (J_A * exp(zf[div(NI, 2), div(NJ, 2), k] * DL / J_lambda1) + (1 - J_A) * exp(zf[div(NI, 2), div(NJ, 2), k] * DL / J_lambda2))
+    return DL * swrd / (R0 * 4187e0)
+end
+
+@kernel function k_heat_flux!(Tdif, swr, qloss, zf, Jac, wz, fac, J_A, J_lambda1, J_lambda2, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds begin
+        if (k == NK)
+            local Kdfluxdzt = DL * (swr[j] - qloss[j]) / (R0 * 4187e0)
+            Tdif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdfluxdzt
+        elseif (k == 1)
+            local Kdfluxdzb = 0e0
+            Tdif[i, j, 1] = fac * Jac[i, j, 1] * wz[i, j, 1] * Kdfluxdzb
+        else
+            Tdif[i, j, k] = fac * Jac[i, j, k] * wz[i, j, k] * (hf_Kdfluxdzz(swr, zf, j, k, J_A, J_lambda1, J_lambda2) - hf_Kdfluxdzz(swr, zf, j, k - 1, J_A, J_lambda1, J_lambda2))
+        end
+    end
+end
+
+# sinusoidal (in y) short-wave radiation
+@kernel function k_hf_swr!(swr, lo)
+    j, = @index(Global, NTuple) .+ lo
+    @inbounds swr[j] = 900e0 * sin(rc_kind(j - 1) / rc_kind(NJ - 1) * PI / 2)
+end
 
 """
-function heat_flux(Tdif, step)
+function heat_flux(Tdif, step, S=DEV)
     # arguments
     - `Tdif` 
 """
-function heat_flux(Tdif, step)
-    local swrd = heat_flux_swrd
-    local Kdfluxdzz = heat_flux_Kdfluxdzz
+function heat_flux(Tdif, step, S=DEV)
 
     # This part deals with the water type coefficients
     local J_lambda1 = 0.6e0
@@ -20,35 +44,17 @@ function heat_flux(Tdif, step)
     @fortSet("j_a", J_A, rc_kind)
 
     # This part deals with short wave radiation
-    @views @. swr = 0e0
-    @views @. qloss = 0e0
+    dfill!(S.swr, 0e0)
+    dfill!(S.qloss, 0e0)
 
     # Add sinusoidal heat flux
     local swrtemp::rc_kind = 0e0 * sin((2e0 * 3.14159e0 / (24 * 3600)) * step * dtf * 1e05)
     swrtemp = max(0e0, swrtemp)
 
-    for j in 1:NJ
-        swr[j] = 900e0 * sin(rc_kind(j - 1) / rc_kind(NJ - 1) * PI / 2)
-    end
-    @views @. qloss = 0e0 / 3.14159
+    launch!(S, k_hf_swr!, (1:NJ,), S.swr)
+    dfill!(S.qloss, 0e0 / 3.14159)
 
 
     local fac = 1e0 / (UL * DL * delta)
-    for j in 1:NJ
-        for i in 1:NI
-            local Kdfluxdzt = DL * (swr[j] - qloss[j]) / (R0 * 4187e0)
-            for k in 1:NK
-                swrd[k] = swr[j] * (J_A * exp(zf[div(NI, 2), div(NJ, 2), k] * DL / J_lambda1) + (1 - J_A) * exp(zf[div(NI, 2), div(NJ, 2), k] * DL / J_lambda2))
-                Kdfluxdzz[k] = DL * swrd[k] / (R0 * 4187e0)
-            end
-            local Kdfluxdzb = 0e0
-            Tdif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdfluxdzt
-            for k in 2:NK-1
-                Tdif[i, j, k] = fac * Jac[i, j, k] * wz[i, j, k] * (Kdfluxdzz[k] - Kdfluxdzz[k-1])
-            end
-            Tdif[i, j, 1] = fac * Jac[i, j, 1] * wz[i, j, 1] * Kdfluxdzb
-        end
-    end
-
-    #@ccall "./PSOM_LIB.so".heat_flux_(pointer(Tdif)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
+    launch!(S, k_heat_flux!, (1:NI, 1:NJ, 1:NK), Tdif, S.swr, S.qloss, S.zf, S.Jac, S.wz, fac, J_A, J_lambda1, J_lambda2)
 end

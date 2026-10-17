@@ -163,3 +163,61 @@ function advect(var, uvarx, S=DEV)
 
     launch!(S, k_adv_div!, (1:NI, 1:NJ, 1:NK), uvarx, fx, fy, fz)
 end
+
+# ---------------------------------------------------------------------------------------------
+# Kernels of advection_and_mixing. They live here, not in advection_and_mixing.jl, because experiments
+# (e.g. waves) override that file but share these.
+
+# var = field(:, :, :, m) (T, s, u, v, w), with halos
+@kernel function k_am_load!(var, fld, m, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds var[i, j, k] = fld[i, j, k, m]
+end
+
+# var = Tr(it, :, :, :, m), with halos
+@kernel function k_am_load_tr!(var, Tr, it, m, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds var[i, j, k] = Tr[it, i, j, k, m]
+end
+
+# total tendency of the explicit scheme, in place in uvarx (the Fortran's sequence of
+# uvarx = uvarx - ... updates):
+#   advection - horizontal mixing (useh) - vertical mixing (usev) - forcing (usef: heat flux or wind
+#   stress) + bottom drag at k = 1 (usebot: u and v)
+@kernel function k_am_tend!(uvarx, vdh, vdv, frc, var, Jac, wz, useh, usev, usef, usebot, cbot, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds begin
+        local t = uvarx[i, j, k]
+        if (useh)
+            t -= vdh[i, j, k]
+        end
+        if (usev)
+            t -= vdv[i, j, k]
+        end
+        if (usef)
+            t -= frc[i, j, k]
+        end
+        if (usebot && k == 1)
+            t += cbot * (Jac[i, j, 1] * wz[i, j, 1]) * var[i, j, 1]
+        end
+        uvarx[i, j, k] = t
+    end
+end
+
+# fld(:, :, :, n) = fld0(:, :, :, 0) - dtimel * JacInv * uvarx   (T, s)
+@kernel function k_am_upd4!(fld, fld0, n, dtimel, JacInv, uvarx, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds fld[i, j, k, n] = fld0[i, j, k, 0] - dtimel * JacInv[i, j, k] * uvarx[i, j, k]
+end
+
+# c = fld0(:, :, :, 0) - dtimel * JacInv * uvarx   (cx, cy, cz from u, v, w)
+@kernel function k_am_upd3!(c, fld0, dtimel, JacInv, uvarx, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds c[i, j, k] = fld0[i, j, k, 0] - dtimel * JacInv[i, j, k] * uvarx[i, j, k]
+end
+
+# Tr(it, :, :, :, n) = Tr(it, :, :, :, 0) - dtimel * JacInv * uvarx
+@kernel function k_am_upd_tr!(Tr, it, n, dtimel, JacInv, uvarx, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds Tr[it, i, j, k, n] = Tr[it, i, j, k, 0] - dtimel * JacInv[i, j, k] * uvarx[i, j, k]
+end

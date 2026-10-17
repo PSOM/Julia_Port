@@ -1,69 +1,60 @@
-function wind_stress(udif, vdif, step)
-  #  Port of waves/src/wind_stress.f90.
-  #  udif(NI,NJ,NK), vdif(NI,NJ,NK): source terms from the surface wind stress (top level only).
-  #  stress_top, stress_top_x, stress_top_y are the header arrays (NI,NJ).
-  #  yw, ymid, yset are INTEGER in the Fortran.
+# Port of waves/src/wind_stress.f90.
+# udif(NI,NJ,NK), vdif(NI,NJ,NK): source terms from the surface wind stress (top level only).
+# stress_top, stress_top_x, stress_top_y are the header arrays (NI,NJ).
+# yw, ymid, yset are INTEGER in the Fortran.
 
-  udif .= 0e0
-  vdif .= 0e0
+# one work item per (i, j): stress_top_y(1, j) of the Fortran is recomputed for every i (same value)
+@kernel function k_wind_stress!(udif, vdif, stress_top, stress_top_x, stress_top_y, rho, Jac, wz,
+                                stressmax, yw, step, fac, fact, lo)
+    i, j = @index(Global, NTuple) .+ lo
+    @inbounds begin
+        #*********************************
+        # COMPUTATION OF THE WIND STRESS
+        local sty
+        local yyy = rc_kind(j) - 0.5
+        if (j <= div(NJ, 2))
+            local yset = 30
+            sty = stressmax * 0.5 * (1e0 + tanh(((yyy - yset) / yw) * PI))
+        else
+            local yset = NJ - 30
+            sty = stressmax * 0.5 * (1e0 + tanh((-(yyy - yset) / yw) * PI))
+        end
+        if (abs(sty - stressmax) < 0.001)
+            sty = stressmax
+        end
+        if (abs(sty) < 0.001)
+            sty = 0e0
+        end
+        if (step > 240)
+            sty = 0e0
+        end
 
-  #*********************************
-  # COMPUTATION OF THE WIND STRESS
+        #************************************
+        # COMPUTATION OF THE SOURCE TERM
 
-  stress_top_x .= 0e0
-  stress_top_y .= 0e0
-  local stressmax = 0.26e0
+        local stx = 0e0
+        stress_top_x[i, j] = stx
+        stress_top_y[i, j] = sty
+        stress_top[i, j] = sqrt(stx * stx + sty * sty)
+        local rhoinv = 1e0 / rho[i, j, NK]
 
-  local yw = 50
-  local ymid = trunc(Int, 0.5 * rc_kind(NJ))
-  local yset = 30
+        local Kdudzt = stx * rhoinv * fact
+        local Kdvdzt = sty * rhoinv * fact
 
-  for j in 1:div(NJ, 2)
-    local yyy = rc_kind(j) - 0.5
-    stress_top_y[1, j] = stressmax * 0.5 * (1e0 + tanh(((yyy - yset) / yw) * PI))
-  end
-
-  yset = NJ - 30
-  for j in div(NJ, 2)+1:NJ
-    local yyy = rc_kind(j) - 0.5
-    stress_top_y[1, j] = stressmax * 0.5 * (1e0 + tanh((-(yyy - yset) / yw) * PI))
-  end
-
-  for j in 1:NJ
-    if (abs(stress_top_y[1, j] - stressmax) < 0.001)
-      stress_top_y[1, j] = stressmax
+        udif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdudzt
+        vdif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdvdzt
     end
-    if (abs(stress_top_y[1, j]) < 0.001)
-      stress_top_y[1, j] = 0e0
-    end
-  end
+end
 
-  for i in 1:NI
-    for j in 1:NJ
-      stress_top_y[i, j] = stress_top_y[1, j]
-    end
-  end
+function wind_stress(udif, vdif, step, S=DEV)
+    dfill!(udif, 0e0)
+    dfill!(vdif, 0e0)
 
-  if (step > 240)
-    stress_top_y .= 0e0
-  end
+    local stressmax = 0.26e0
+    local yw = 50
 
-  #************************************
-  # COMPUTATION OF THE SOURCE TERM
-
-  local fac = 1e0 / (UL * DL * delta)
-  local fact = DL / UL
-
-  for j in 1:NJ
-    for i in 1:NI
-      stress_top[i, j] = sqrt(stress_top_x[i, j] * stress_top_x[i, j] + stress_top_y[i, j] * stress_top_y[i, j])
-      local rhoinv = 1e0 / rho[i, j, NK]
-      local Kdudzt = stress_top_x[i, j] * rhoinv * fact
-      local Kdvdzt = stress_top_y[i, j] * rhoinv * fact
-
-      udif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdudzt
-      vdif[i, j, NK] = fac * Jac[i, j, NK] * wz[i, j, NK] * Kdvdzt
-    end
-  end
-
+    local fac = 1e0 / (UL * DL * delta)
+    local fact = DL / UL
+    launch!(S, k_wind_stress!, (1:NI, 1:NJ), udif, vdif, S.stress_top, S.stress_top_x, S.stress_top_y, S.rho, S.Jac, S.wz,
+            stressmax, yw, step, fac, fact)
 end
