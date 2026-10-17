@@ -16,7 +16,7 @@ function rpevalgrad_Song(n)
    local vconst = 10e0 * gpr / P1
 
    #@ccall "./PSOM_LIB.so".findzall_()::Cvoid
-   findzall()
+   findzall(HOST)
    
    #@ccall "./PSOM_LIB.so".evalrho_(pointer(rho)::Ptr{rc_kind}, Ref(n)::Ref{Int})::Cvoid
    evalrho(rho, n, HOST)
