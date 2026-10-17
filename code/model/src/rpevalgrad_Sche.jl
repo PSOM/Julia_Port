@@ -174,7 +174,7 @@ function rpevalgrad_Sche(nl::Int)
     #++++ Added by JBG, 20120425.
     @. @views FC[0, :] = FC[NI, :]
     @. @views FC[1, :] = z_r[1, :, k] - z_r[NI, :, k]
-    @. @views rx[0, :] = rx[NI-1, :]
+    @. @views rx[0, :] = rx[NI, :]
     @. @views rx[1, :] = rhol[1, :, k] - rhol[NI, :, k]
     @. @views FC[NI+1, :] = FC[1, :]
     @. @views rx[NI+1, :] = rx[1, :]
