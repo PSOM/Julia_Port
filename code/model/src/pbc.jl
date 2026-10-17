@@ -7,7 +7,7 @@ function pbc(cpf, fn, dtimel)
                     fn[i, j, k] = 0e0
                     cpf[1:19, i, j, k] .= 0e0
 
-                    fn[i, j, k] += edt * cxf[i, j, k] - sifc[i, j, k]
+                    fn[i, j, k] = fn[i, j, k] + edt * cxf[i, j, k] - sifc[i, j, k]
                     cpf[1, i, j, k] -= gqi[i, j, k, 1]
                     cpf[2, i, j, k] += gqi[i, j, k, 1]
                     cpf[3, i, j, k] += 0.25e0 * gqi[i, j, k, 2]
@@ -19,7 +19,7 @@ function pbc(cpf, fn, dtimel)
                     cpf[13, i, j, k] -= 0.25e0 * gqi3[i, j, k]
                     cpf[14, i, j, k] += 0.25e0 * gqi3[i, j, k]
 
-                    fn[i, j, k] += -edt * cxf[i-1, j, k] + sifc[i-1, j, k]
+                    fn[i, j, k] = fn[i, j, k] - edt * cxf[i-1, j, k] + sifc[i-1, j, k]
                     cpf[1, i, j, k] = cpf[1, i, j, k] - gqi[i-1, j, k, 1]
                     cpf[3, i, j, k] = cpf[3, i, j, k] - 0.25e0 * gqi[i-1, j, k, 2]
                     cpf[4, i, j, k] = cpf[4, i, j, k] + gqi[i-1, j, k, 1]
@@ -34,7 +34,7 @@ function pbc(cpf, fn, dtimel)
                     if (j == NJ)
                         fn[i, j, k] += edt * vfbcn[i, k]
                     else
-                        fn[i, j, k] += edt * cyf[i, j, k] - sjfc[i, j, k]
+                        fn[i, j, k] = fn[i, j, k] + edt * cyf[i, j, k] - sjfc[i, j, k]
                         cpf[1, i, j, k] = cpf[1, i, j, k] -            gqj[i, j, k, 2]
                         cpf[2, i, j, k] = cpf[2, i, j, k] + 0.25e0 *   gqj[i, j, k, 1]
                         cpf[3, i, j, k] = cpf[3, i, j, k] +            gqj[i, j, k, 2]
@@ -50,7 +50,7 @@ function pbc(cpf, fn, dtimel)
                     if (j == 1)
                         fn[i, j, k] -= edt * vfbcs[i, k]
                     else
-                        fn[i, j, k] += -edt * cyf[i, j-1, k] + sjfc[i, j-1, k]
+                        fn[i, j, k] = fn[i, j, k] - edt * cyf[i, j-1, k] + sjfc[i, j-1, k]
                         cpf[1, i, j, k] = cpf[1, i, j, k] - gqj[i, j-1, k, 2]
                         cpf[2, i, j, k] = cpf[2, i, j, k] - 0.25e0 * gqj[i, j-1, k, 1]
                         cpf[4, i, j, k] = cpf[4, i, j, k] + 0.25e0 * gqj[i, j-1, k, 1]
@@ -64,10 +64,10 @@ function pbc(cpf, fn, dtimel)
                     end
 
                     if (k == NK)
-                        fn[i, j, k] += edt * czf[i, j, k] - skfc[i, j, k]
+                        fn[i, j, k] = fn[i, j, k] + edt * czf[i, j, k] - skfc[i, j, k]
                         cpf[1, i, j, k] -= 2e0 * gqk[i, j, k, 3]
                     else
-                        fn[i, j, k] += edt * czf[i, j, k] - skfc[i, j, k]
+                        fn[i, j, k] = fn[i, j, k] + edt * czf[i, j, k] - skfc[i, j, k]
                         cpf[1, i, j, k] = cpf[1, i, j, k] - gqk[i, j, k, 3]
                         cpf[2, i, j, k] = cpf[2, i, j, k] + 0.25e0 * gqk[i, j, k, 1]
                         cpf[3, i, j, k] = cpf[3, i, j, k] + 0.25e0 * gqk[i, j, k, 2]
@@ -81,9 +81,9 @@ function pbc(cpf, fn, dtimel)
                     end
 
                     if (k == 1)
-                        fn[i, j, k] -= wfbcb[i, j]
+                        fn[i, j, k] = fn[i, j, k] - edt * wfbcb[i, j]
                     else
-                        fn[i, j, k] += -edt * czf[i, j, k-1] + skfc[i, j, k-1]
+                        fn[i, j, k] = fn[i, j, k] - edt * czf[i, j, k-1] + skfc[i, j, k-1]
                         cpf[1, i, j, k] =  cpf[1, i, j, k]- gqk[i, j, k-1, 3]
                         cpf[2, i, j, k] =  cpf[2, i, j, k]- 0.25e0 * gqk[i, j, k-1, 1]
                         cpf[3, i, j, k] =  cpf[3, i, j, k]- 0.25e0 * gqk[i, j, k-1, 2]
