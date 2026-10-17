@@ -9,7 +9,7 @@ function findn(x, y, z)
       local pn8 = (1e0 - x) * y * z
       local sum = pn1 + pn2 + pn3 + pn4 + pn5 + pn6 + pn7 + pn8
       if (abs(sum - 1e0) > 0.0001)
-            println["coefficients wrong"]
+            println("coefficients wrong")
       end
       return (pn1, pn2, pn3, pn4, pn5, pn6, pn7, pn8)
 end
@@ -20,7 +20,7 @@ function prolong(nxm, nym, nzm, cor, fin)
       local y = 0.25e0
       local z = 0.25e0
       local an = findn(x, y, z)
-      x = x + 5e0
+      x = x + 0.5e0
       local bn = findn(x, y, z)
       y = y + 0.5e0
       local cn = findn(x, y, z)
