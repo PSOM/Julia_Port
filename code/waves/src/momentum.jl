@@ -54,7 +54,7 @@ function momentum(pcorr, step)
         srcface(ivs[], step)
         #@ccall "./PSOM_LIB.so".srcface_(ivs::Ref{Int}, Ref(step)::Ref{Int})::Cvoid
 
-        hsolve(h, oldh, hdt, dtim[])
+        hsolve(DEV.h, DEV.oldh, DEV.hdt, dtim[])
         #@ccall "./PSOM_LIB.so".hsolve_(@lkGet("h", rc_kind)::Ref{rc_kind}, @lkGet("oldh", rc_kind)::Ref{rc_kind}, @lkGet("hdt", rc_kind)::Ref{rc_kind}, dtim::Ref{rc_kind})::Cvoid
         
         calcfkfc()
