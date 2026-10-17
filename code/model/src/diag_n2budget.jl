@@ -24,7 +24,7 @@ function diag_n2budget(step)
    local Dbdt = zeros(rc_kind, NI, NJ, NK)
    local avexyN2 = zeros(rc_kind, NK)
    local avezc = zeros(rc_kind, NK)
-   local avezf = zeros(rc_kind, NK)    
+   local avezf = OffsetArray(zeros(rc_kind, NK + 1), 0:NK)   # avezf[k-1] is used at k=1    
    local ktest = zeros(Int, 3)                                         
    local gravR0 = gpr * 10e0 / R0
    local n = 0
@@ -45,6 +45,13 @@ function diag_n2budget(step)
       avezf[k] = DL * avezf[k] / rc_kind(NI * NJ)
       avezc[k] = DL * avezc[k] / rc_kind(NI * NJ)
    end
+   # avezf[0]: mean depth of the bottom face (diag_n2budget.f90)
+   for j in 1:NJ
+      for i in 1:NI
+         avezf[0] = -zf[i, j, 0] + avezf[0]
+      end
+   end
+   avezf[0] = DL * avezf[0] / rc_kind(NI * NJ)
    #     avezf and avezc are positive (in m)                               
 
    #     Integrate vertically, down to 0.9*MLD, 0.75*MLD , and 0.4*MLD     
