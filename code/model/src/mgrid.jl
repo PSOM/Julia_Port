@@ -1,3 +1,8 @@
+# work arrays of mgrid, allocated once (were allocated on every call: ~19*maxint doubles)
+const mgrid_cp = zeros(rc_kind, 19 * maxint)
+const mgrid_rhs = zeros(rc_kind, maxint)
+const mgrid_res = zeros(rc_kind, int1)
+
 function mgrid(p, dtime, edt, cfcdiv)
      local nx = zeros(Int, ngrid)
      local ny = zeros(Int, ngrid)
@@ -8,9 +13,11 @@ function mgrid(p, dtime, edt, cfcdiv)
      local loci = zeros(Int, ngrid)
      local loccp = zeros(Int, ngrid)
 
-     local cp = zeros(rc_kind, 19 * maxint)
-     local rhs = zeros(rc_kind, maxint)
-     local res = zeros(rc_kind, int1)
+     # every entry is written (cpfine/pbc/cpcors, restrict, resid) before it is read,
+     # as in the Fortran, where these are uninitialised locals: no zeroing needed
+     local cp = mgrid_cp
+     local rhs = mgrid_rhs
+     local res = mgrid_res
 
      local noc = 30
      local nu1 = 2

@@ -1,6 +1,10 @@
-function cpfine(dtimel,cpf,fn)
-    cpf = reshape(view(cpf, 1:(19*NI*NJ*NK)), 19, NI, NJ, NK)
-    fn = reshape(view(fn, 1:(NI*NJ*NK)), NI, NJ, NK)
+# cpf, fn are the flat multigrid storage vectors; the work is done on 4-D/3-D views of their
+# first-level part. (Function barrier: rebinding the arguments to the views made the loop type-unstable.)
+function cpfine(dtimel, cpf, fn)
+    cpfine_kernel!(dtimel, reshape(view(cpf, 1:(19*NI*NJ*NK)), 19, NI, NJ, NK), reshape(view(fn, 1:(NI*NJ*NK)), NI, NJ, NK))
+end
+
+function cpfine_kernel!(dtimel, cpf, fn)
     local edt = EPS / dtimel
     
     pbc(cpf, fn, dtimel)

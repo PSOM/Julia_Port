@@ -1,5 +1,10 @@
+# pf is the flat multigrid vector; work on its first-level part as an (0:NI+1,0:NJ+1,0:NK+1) view
+# (function barrier for type stability)
 function vface(pf, dtimel::rc_kind)
-  pf = OffsetArrays.reshape(view(pf, 1:((NI+2)*(NJ+2)*(NK+2))), 0:NI+1, 0:NJ+1, 0:NK+1)
+  vface_kernel!(OffsetArrays.reshape(view(pf, 1:((NI+2)*(NJ+2)*(NK+2))), 0:NI+1, 0:NJ+1, 0:NK+1), dtimel)
+end
+
+function vface_kernel!(pf, dtimel::rc_kind)
   local dte = dtimel / EPS
   local kaph1 = 1e0 - kappah
   for j in 1:NJ
@@ -13,7 +18,7 @@ function vface(pf, dtimel::rc_kind)
     end
   end
   
-  uf[0,:,:] .= uf[NI,:,:]
+  @views uf[0,:,:] .= uf[NI,:,:]
 
   for i in 1:NI
     for j in 0:NJ
