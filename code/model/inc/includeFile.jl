@@ -101,6 +101,11 @@ if (!@isdefined(INCLUDE_All))
     include("../src/diag_n2budget.jl")
     include("../src/diag_vort.jl")
     include("../src/sigma2z.jl")
+
+    # experiment-specific source files (e.g. waves/inc/includeExtra.jl), copied into inc/ by compile_julia.sh
+    if isfile(joinpath(@__DIR__, "includeExtra.jl"))
+        include("includeExtra.jl")
+    end
     
     
     

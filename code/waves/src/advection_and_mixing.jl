@@ -16,7 +16,7 @@ function advection_and_mixing(m, n, dtimel, step)
     @views @. mat_B .= 0e0
     @views @. mat_C .= 0e0
     @views @. mat_D .= 0e0
-    @views @. mat_E .= 0e0
+    @views @. mat_test .= 0e0
     local u_w = zeros(rc_kind, (NI, NJ, NK))
     local v_w = zeros(rc_kind, (NI, NJ, NK))
 
@@ -85,14 +85,14 @@ function advection_and_mixing(m, n, dtimel, step)
                 @views @. uvarx[1:NI, 1:NJ, 1] .+= RR * (1e0 / (UL * delta)) * (Jac[1:NI, 1:NJ, 1] * wz[1:NI, 1:NJ, 1]) * var[1:NI, 1:NJ, 1]
             end
 
-            @static if (cppdefs.gotm_im)
+            @static if (cppdefs.gotm_im)   # implicit vertical mixing; NOT validated (off in the Fortran reference)
                 if (selvar < 6)
                     for i in 1:NI
                         for j in 1:NJ
-                            mat_A[i, j, 1:NK, selvar] = (-1e0) * dtimel * Jacinv[i, j, 1:NK] * mat_A[i, j, 1:NK, selvar]
-                            mat_B[i, j, 1:NK, selvar] = (1e0 - (dtimel * (Jacinv[i, j, 1:NK] * mat_B[i, j, 1:NK, selvar])))
-                            mat_C[i, j, 1:NK-1, selvar] = (-1e0) * (dtimel * (Jacinv[i, j, 1:NK-1] * mat_C[i, j, 1:NK-1, selvar]))
-                            mat_D[i, j, 1:NK, selvar] = dtimel * (Jacinv[i, j, 1:NK] * (mat_D[i, j, 1:NK, selvar] - uvarx_advec[i, j, 1:NK])) + var[i, j, 1:NK]
+                            @views mat_A[i, j, 1:NK, selvar] .= (-1e0) .* dtimel .* JacInv[i, j, 1:NK] .* mat_A[i, j, 1:NK, selvar]
+                            @views mat_B[i, j, 1:NK, selvar] .= (1e0 .- (dtimel .* (JacInv[i, j, 1:NK] .* mat_B[i, j, 1:NK, selvar])))
+                            @views mat_C[i, j, 1:NK-1, selvar] .= (-1e0) .* (dtimel .* (JacInv[i, j, 1:NK-1] .* mat_C[i, j, 1:NK-1, selvar]))
+                            @views mat_D[i, j, 1:NK, selvar] .= dtimel .* (JacInv[i, j, 1:NK] .* (mat_D[i, j, 1:NK, selvar] .- uvarx_advec[i, j, 1:NK])) .+ var[i, j, 1:NK]
                             solve_tridiag(view(mat_A, i, j, 1:NK, selvar), view(mat_B, i, j, 1:NK, selvar), view(mat_C, i, j, 1:NK, selvar), view(mat_D, i, j, 1:NK, selvar), view(mat_test, i, j, 1:NK, selvar), NK)
                             #@ccall "./PSOM_LIB.so".solve_tridiag_(pointer(mat_A[i,j,1:NK, selvar])::Ptr{rc_kind},pointer(mat_B[i,j,1:NK, selvar])::Ptr{rc_kind},pointer(mat_C[i,j,1:NK, selvar])::Ptr{rc_kind},pointer(mat_D[i,j,1:NK, selvar])::Ptr{rc_kind},pointer(mat_test[i,j,1:NK, selvar])::Ptr{rc_kind}, Ref(NK)::Ref{rc_kind})::Cvoid
                         end
@@ -133,12 +133,11 @@ function advection_and_mixing(m, n, dtimel, step)
                 end
             end
 
-            local lc_diff = @views @. dtimel * JacInv[1:NI, 1:NJ, 1:NK] .* uvarx[1:NI, 1:NJ, 1:NK]
-
-            @views @. cz[1:NI, 1:NJ, 1:NK] = w[1:NI, 1:NJ, 1:NK, 0] - lc_diff
+            # (the cz update belongs to selvar==5 only, done above; the Julia port also overwrote cz here
+            #  for every selvar, i.e. with the tracer tendency on the last pass)
             for it in 1:ntr
                 if (selvar == 5 + it)
-                    @views @. Tr[it, 1:NI, 1:NJ, 1:NK, n] = Tr[it, 1:NI, 1:NJ, 1:NK, 0] - lc_diff
+                    @views @. Tr[it, 1:NI, 1:NJ, 1:NK, n] = Tr[it, 1:NI, 1:NJ, 1:NK, 0] - dtimel * JacInv[1:NI, 1:NJ, 1:NK] * uvarx[1:NI, 1:NJ, 1:NK]
                 end
             end
         end

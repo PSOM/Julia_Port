@@ -2,7 +2,9 @@ using .fortVar
 using .cppdefs
 
 
-function mixing_vertical_worker(area, fac, var, vardif)
+function mixing_vertical_worker(area, fac, var, vardif, selvar)
+    # Port of the column loop of waves/src/mixing_vertical.f90 (also fills the implicit-mixing
+    # matrices mat_A/B/C for this selvar)
     local dvardzfc = OffsetArray(zeros(rc_kind, NK + 1), 0:NK)
     for counter in area
         local j = div(counter - 1, NI) + 1
@@ -10,32 +12,28 @@ function mixing_vertical_worker(area, fac, var, vardif)
         for k in 1:NK-1
             dvardzfc[k] = wz[i, j, k] * (var[i, j, k+1] - var[i, j, k])
         end
-
         dvardzfc[0] = 0e0
         dvardzfc[NK] = 0e0
 
-        local dfactor = fac * Jac[i, j, 1] * wz[i, j, 1]
+        local k = 1
+        local dfactor = fac * Jac[i, j, k] * wz[i, j, k]
+        vardif[i, j, k] = dfactor * (dvardzfc[k] * Kz[i, j, k] - dvardzfc[k-1] * Kz[i, j, k-1])
         mat_B[i, j, k, selvar] = (-1e0) * dfactor * (Kz[i, j, k] * wz[i, j, k])
         mat_C[i, j, k, selvar] = dfactor * Kz[i, j, k] * wz[i, j, k]
 
-        vardif[i, j, 1] = dfactor * (dvardzfc[1] * Kz[i, j, 1] - dvardzfc[0] * Kz[i, j, 0])
-
         for k in 2:NK-1
             local dfactor = fac * Jac[i, j, k] * wz[i, j, k]
-            mat_A[i, j, k, selvar] = dfactor * kz[i, j, k-1] * wz[i, j, k-1]
+            vardif[i, j, k] = dfactor * (dvardzfc[k] * Kz[i, j, k] - dvardzfc[k-1] * Kz[i, j, k-1])
+            mat_A[i, j, k, selvar] = dfactor * Kz[i, j, k-1] * wz[i, j, k-1]
             mat_B[i, j, k, selvar] = (-1e0) * dfactor * (Kz[i, j, k] * wz[i, j, k] + Kz[i, j, k-1] * wz[i, j, k-1])
             mat_C[i, j, k, selvar] = dfactor * Kz[i, j, k] * wz[i, j, k]
-
-            vardif[i, j, k] = dfactor * (dvardzfc[k] * Kz[i, j, k] - dvardzfc[k-1] * Kz[i, j, k-1])
-
         end
-        local dfactor = fac * Jac[i, j, NK] * wz[i, j, NK]
+
+        k = NK
+        dfactor = fac * Jac[i, j, k] * wz[i, j, k]
+        vardif[i, j, k] = dfactor * (dvardzfc[k] * Kz[i, j, k] - dvardzfc[k-1] * Kz[i, j, k-1])
         mat_A[i, j, k, selvar] = dfactor * Kz[i, j, k-1] * wz[i, j, k-1]
         mat_B[i, j, k, selvar] = (-1e0) * dfactor * Kz[i, j, k-1] * wz[i, j, k-1]
-
-        vardif[i, j, NK] = dfactor * (dvardzfc[NK] * Kz[i, j, NK] - dvardzfc[NK-1] * Kz[i, j, NK-1])
-
-
     end
 end
 
@@ -78,9 +76,9 @@ function mixing_vertical(var, vardif, m, step, iv_compute_kzl, selvar)
         end
     end
 
-    local chunks = Iterators.partition(1:NJ*NI, div(NJ * NI, Threads.nthreads()))
+    local chunks = Iterators.partition(1:NJ*NI, cld(NJ * NI, Threads.nthreads()))
     local tasks = map(chunks) do area
-        Threads.@spawn mixing_vertical_worker(area, fac, var, vardif)
+        Threads.@spawn mixing_vertical_worker(area, fac, var, vardif, selvar)
     end
     wait.(tasks)
 

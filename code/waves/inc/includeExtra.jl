@@ -1,0 +1,5 @@
+# Extra source files of the waves experiment (included at the end of model/inc/includeFile.jl)
+include("../src/sponge.jl")
+include("../src/diag_ptc.jl")
+include("../src/intpol_pt.jl")
+include("../src/gradup3df.jl")

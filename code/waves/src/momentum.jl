@@ -101,6 +101,6 @@ function momentum(pcorr, step)
     diag_n2()
     #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
 
-    sponge(0, dtim)
+    sponge(0, dtim[])   # dtim of the last RK sub-step (= dtf), as in waves/src/momentum.f90
 end
 
