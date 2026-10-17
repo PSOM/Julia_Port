@@ -6,7 +6,7 @@
 # - Sources: code/model/{src,inc}, overlaid by code/<experiment>/{src,inc} (same rule as compile_julia.sh).
 # - cppdefs.h is regenerated to match the Julia flags in code/model/inc/cppdefs.jl, except:
 #     file_output_cdf off (no Fortran netcdf here; the reference uses the binary pickup dumps)
-#     parallel off      (the OpenMP linerelax is a racy Gauss-Seidel -> non-deterministic)
+#     parallel off unless OMP=1 (the OpenMP linerelax is a racy Gauss-Seidel -> non-deterministic)
 #     file_output, file_output_bin on (the binary pickup dumps are what the comparison reads)
 # - Flags follow the gfortran reference in code/tools/_values_reference
 #   (-fdefault-real-8 promotes the few single-precision locals to Float64, like the Julia code).
@@ -15,10 +15,11 @@
 
 set -e
 here="$(cd "$(dirname "$0")" && pwd)"
-code="$here/../code"
+code="${PSOM_CODE:-$here/../code}"   # PSOM_CODE=/path/to/V1.0/code builds another source tree
 expe="${1:-model}"
 source "$here/size_override.sh"
 bdir="$here/build/$expe$(size_suffix)${BUILD_SUFFIX:-}"
+[ "${OMP:-0}" = 1 ] && [ -z "${BUILD_SUFFIX:-}" ] && bdir="${bdir}_omp"
 
 rm -rf "$bdir"; mkdir -p "$bdir"
 cp "$code"/model/src/*.f90 "$code"/model/inc/*.h "$code"/model/inc/*.inc "$bdir"/
@@ -36,13 +37,16 @@ if [ "${FIX_LINERELAX_WRAP:-0}" = 1 ]; then
 fi
 
 # cppdefs.h derived from the Julia cppdefs.jl (true -> #define, false -> #undef)
-jl_cppdefs="$code/model/inc/cppdefs.jl"
-[ -f "$code/$expe/inc/cppdefs.jl" ] && jl_cppdefs="$code/$expe/inc/cppdefs.jl"
+# (always from the Julia port's tree, also when PSOM_CODE points elsewhere)
+jlcode="$here/../code"
+jl_cppdefs="$jlcode/model/inc/cppdefs.jl"
+[ -f "$jlcode/$expe/inc/cppdefs.jl" ] && jl_cppdefs="$jlcode/$expe/inc/cppdefs.jl"
 awk '$1=="const" { split($0, a, "="); name=a[1]; sub(/^[ \t]*const[ \t]+/, "", name); gsub(/[ \t]/, "", name);
                      val=a[2]; gsub(/[ \t]/, "", val);
-                     if (name=="file_output_cdf" || name=="parallel" || name=="gotm_call") val="false";
+                     if (name=="file_output_cdf" || name=="gotm_call") val="false";
+                     if (name=="parallel") val=(omp=="1" ? "true" : "false");
                      if (name=="file_output" || name=="file_output_bin") val="true";
-                     if (val=="true") print "#define " name; else print "#undef  " name }' "$jl_cppdefs" > "$bdir/cppdefs.h"
+                     if (val=="true") print "#define " name; else print "#undef  " name }' omp="${OMP:-0}" "$jl_cppdefs" > "$bdir/cppdefs.h"
 
 # Object list = lobj_general of code/optfile (gotm and netcdf objects excluded)
 objs=$(grep '^lobj_general=' "$code/optfile" | sed 's/^lobj_general=//')
@@ -54,10 +58,13 @@ fi
 FC=${FC:-gfortran}
 # anaconda ships an old ld that cannot read the macOS SDK: force the system linker
 [ "$(uname)" = Darwin ] && LDFLAGS=${LDFLAGS:-"-B/usr/bin/"}
+# OMP=1: OpenMP build (cpp flag parallel + -fopenmp); not deterministic, for compile/run checks only
+[ "${OMP:-0}" = 1 ] && LDFLAGS="$LDFLAGS -fopenmp"
 FFLAGS=${FFLAGS:-"-O2 -cpp -fdefault-real-8 -fdefault-double-8 -ffree-line-length-none -ffixed-line-length-none -fno-range-check -w"}
 
 cd "$bdir"
 # header (module) first, then write_bin_mod (module used by others), then the rest
+[ "${OMP:-0}" = 1 ] && FFLAGS="$FFLAGS -fopenmp"
 $FC $FFLAGS -c header.f90
 $FC $FFLAGS -c write_bin_mod.f90
 for o in $objs; do
@@ -79,11 +86,6 @@ subroutine ref_read_params()
   CLOSE(77)
 end subroutine ref_read_params
 
-! OpenMP is off in the reference build; some experiment copies (e.g. waves linerelax) call this
-! without the "#ifdef parallel" guard.
-integer function omp_get_num_threads()
-  omp_get_num_threads = 1
-end function omp_get_num_threads
 EOF
 $FC $FFLAGS -c ref_shim.f90
 $FC $FFLAGS $LDFLAGS -o nh_ref *.o
