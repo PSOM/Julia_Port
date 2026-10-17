@@ -7,7 +7,9 @@
 #        validation/regress.sh [check] [case...] # rerun Julia and compare (default: all cases)
 # Cases: wiggle (10 steps), sche (wiggle, Shchepetkin, 10), hydro (wiggle, fnhhy=0, 10), waves (16x192x96, 3)
 # Env: PSOM_BACKEND (cpu | jlarray | cuda | amdgpu) is passed through to the Julia runs.
+#      REGRESS_BASELINE: name of the baseline directory (default julia_baseline).
 set -e
+base="${REGRESS_BASELINE:-julia_baseline}"
 here="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$HOME/.juliaup/bin:$PATH"
 mode="${1:-check}"; [ $# -gt 0 ] && shift
@@ -26,13 +28,13 @@ for c in "${cases[@]}"; do
     targs=(); [ -n "$tag" ] && targs=(--tag $tag)
     if [ "$mode" = save ]; then
         bash "$here/run_case.sh" $exp $n "${args[@]}" "${targs[@]}" > /dev/null || { echo "$c: run FAILED (see $rdir/*/log.txt)"; exit 1; }
-        rm -rf "$rdir/julia_baseline"; cp -r "$rdir/julia" "$rdir/julia_baseline"
-        echo "$c: baseline saved ($rdir/julia_baseline)"
+        rm -rf "$rdir/$base"; cp -r "$rdir/julia" "$rdir/$base"
+        echo "$c: baseline saved ($rdir/$base)"
     else
         bash "$here/run_case.sh" $exp $n --no-fortran "${args[@]}" "${targs[@]}" > /dev/null \
             || { echo "$c: julia FAILED, tail of $rdir/julia/log.txt:"; tail -15 "$rdir/julia/log.txt"; exit 1; }
         read NI NJ NK ntr <<< "$(awk '{print $1,$2,$3,$4}' "$rdir/dims.txt")"
-        b=$(JULIA_PROJECT="$here" julia "$here/compare.jl" "$rdir/julia_baseline" "$rdir/julia" $NI $NJ $NK $ntr | sed -n '/^worst/,$p' | awk 'NR>1{if ($2+0>m) {m=$2+0; f=$1}} END{printf "%.3e (%s)", m, f}')
+        b=$(JULIA_PROJECT="$here" julia "$here/compare.jl" "$rdir/$base" "$rdir/julia" $NI $NJ $NK $ntr | sed -n '/^worst/,$p' | awk 'NR>1{if ($2+0>m) {m=$2+0; f=$1}} END{printf "%.3e (%s)", m, f}')
         f=$(sed -n '/^worst/,$p' "$rdir/compare.txt" | awk 'NR>1{if ($2+0>m) {m=$2+0; f=$1}} END{printf "%.3e (%s)", m, f}')
         echo "$c: vs baseline max rel diff $b | vs Fortran $f"
     fi

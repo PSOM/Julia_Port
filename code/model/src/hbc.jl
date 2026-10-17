@@ -1,3 +1,4 @@
+# vertical sums are sequential (k=1..NK), as in hbc.f90 (Base.sum may reorder the additions)
 function hbc(chf,fn,dtimel) 
   local kaph1 = 1e0 - kappah
   local edt = EPS / dtimel
@@ -12,11 +13,11 @@ function hbc(chf,fn,dtimel)
         fn[i, j] = eg * (kaphinv * wfbcb[i, j] - J2d[i, j] * oldh[i, j] * dtinv)
         chf[1, i, j] = -eg * J2d[i, j] * dtinv
         chf[2:9, i, j] .= 0e0
-        local sumsif = sum(sifc[i, j, 1:NK])
-        local sumcxf = sum(cxf[i, j, 1:NK])
-        local sumuf = sum(uf[i, j, 1:NK])
-        local sumhxn = sum(hxn[i, j, 1:NK])
-        local sumgi = (sum(gi[i, j, 1:NK, 1]), sum(gi[i, j, 1:NK, 2]))
+        local sumsif = seqsum(@view sifc[i, j, 1:NK])
+        local sumcxf = seqsum(@view cxf[i, j, 1:NK])
+        local sumuf = seqsum(@view uf[i, j, 1:NK])
+        local sumhxn = seqsum(@view hxn[i, j, 1:NK])
+        local sumgi = (seqsum(@view gi[i, j, 1:NK, 1]), seqsum(@view gi[i, j, 1:NK, 2]))
         
         fn[i, j] = fn[i, j] + eg * (sumcxf + constv * sumuf) - gprinv * sumsif - constv * sumhxn
         chf[1, i, j] -= sumgi[1]
@@ -28,11 +29,11 @@ function hbc(chf,fn,dtimel)
         
         local im1 = (i == 1 ? NI : i - 1)
         
-        local sumsif = sum(sifc[im1, j, 1:NK])
-        local sumcxf = sum(cxf[im1, j, 1:NK])
-        local sumuf = sum(uf[im1, j, 1:NK])
-        local sumhxn = sum(hxn[im1, j, 1:NK])
-        local sumgi = (sum(gi[im1, j, 1:NK, 1]), sum(gi[im1, j, 1:NK, 2]))
+        local sumsif = seqsum(@view sifc[im1, j, 1:NK])
+        local sumcxf = seqsum(@view cxf[im1, j, 1:NK])
+        local sumuf = seqsum(@view uf[im1, j, 1:NK])
+        local sumhxn = seqsum(@view hxn[im1, j, 1:NK])
+        local sumgi = (seqsum(@view gi[im1, j, 1:NK, 1]), seqsum(@view gi[im1, j, 1:NK, 2]))
         
         fn[i, j] = fn[i, j] - eg * (sumcxf + constv * sumuf) + gprinv * sumsif + constv * sumhxn
         chf[1, i, j] -= sumgi[1]
@@ -43,14 +44,14 @@ function hbc(chf,fn,dtimel)
         chf[9, i, j] += 0.25e0 * sumgi[2]
         
         if (j == NJ)
-          local sumvf = sum(vfbcn[i, 1:NK])
+          local sumvf = seqsum(@view vfbcn[i, 1:NK])
           fn[i, j] = fn[i, j] + eg * sumvf * kaphinv
         else
-          local sumsjf = sum(sjfc[i, j, 1:NK])
-          local sumcyf = sum(cyf[i, j, 1:NK])
-          local sumvf = sum(vf[i, j, 1:NK])
-          local sumhyn = sum(hyn[i, j, 1:NK])
-          local sumgj = (sum(gj[i, j, 1:NK, 1]), sum(gj[i, j, 1:NK, 2]))
+          local sumsjf = seqsum(@view sjfc[i, j, 1:NK])
+          local sumcyf = seqsum(@view cyf[i, j, 1:NK])
+          local sumvf = seqsum(@view vf[i, j, 1:NK])
+          local sumhyn = seqsum(@view hyn[i, j, 1:NK])
+          local sumgj = (seqsum(@view gj[i, j, 1:NK, 1]), seqsum(@view gj[i, j, 1:NK, 2]))
           fn[i, j] = fn[i, j] + eg * (sumcyf + constv *sumvf) - gprinv * sumsjf - constv * sumhyn
           chf[1, i, j] -=          sumgj[2]
           chf[2, i, j] += 0.25e0 * sumgj[1]
@@ -61,14 +62,14 @@ function hbc(chf,fn,dtimel)
         end
         
         if (j == 1)
-          local sumvf = sum(vfbcs[i, 1:NK])
+          local sumvf = seqsum(@view vfbcs[i, 1:NK])
           fn[i, j] = fn[i, j] - eg * sumvf * kaphinv
         else
-          local sumsjf = sum(sjfc[i, j-1, 1:NK])
-          local sumcyf = sum(cyf[i, j-1, 1:NK])
-          local sumvf = sum(vf[i, j-1, 1:NK])
-          local sumhyn = sum(hyn[i, j-1, 1:NK])
-          local sumgj = (sum(gj[i, j-1, 1:NK, 1]), sum(gj[i, j-1, 1:NK, 2]))
+          local sumsjf = seqsum(@view sjfc[i, j-1, 1:NK])
+          local sumcyf = seqsum(@view cyf[i, j-1, 1:NK])
+          local sumvf = seqsum(@view vf[i, j-1, 1:NK])
+          local sumhyn = seqsum(@view hyn[i, j-1, 1:NK])
+          local sumgj = (seqsum(@view gj[i, j-1, 1:NK, 1]), seqsum(@view gj[i, j-1, 1:NK, 2]))
           fn[i, j] = fn[i, j] - eg * (sumcyf + constv *sumvf) + gprinv * sumsjf + constv * sumhyn
           chf[1, i, j] -=          sumgj[2]
           chf[2, i, j] -= 0.25e0 * sumgj[1]
