@@ -1,48 +1,35 @@
 using .fortVar
 using .cppdefs
 
-
-function mixing_vertical_worker(area, fac, var, vardif)
-    local dvardzfc = OffsetArray(zeros(rc_kind, NK + 1), 0:NK)
-    for counter in area
-        local j = div(counter - 1, NI) + 1
-        local i = mod(counter - 1, NI) + 1
-        for k in 1:NK-1
-            dvardzfc[k] = wz[i, j, k] * (var[i, j, k+1] - var[i, j, k])
-        end
-
-        dvardzfc[0] = 0e0
-        dvardzfc[NK] = 0e0
-
-        local dfactor = fac * Jac[i, j, 1] * wz[i, j, 1]
-        @static if (cppdefs.implicit)
-            mat_B[i,j,k,selvar] = (-1e0)*dfactor*(Kz[i,j,k]*wz[i,j,k] ) 
-            mat_C[i,j,k,selvar] = dfactor*Kz[i,j,k]*wz[i,j,k]
-        else
-            vardif[i, j, 1] = dfactor * (dvardzfc[1] * Kz[i, j, 1] - dvardzfc[0] * Kz[i, j, 0])
-        end
-        for k in 2:NK-1
-            local dfactor = fac * Jac[i, j, k] * wz[i, j, k]
-            @static if (cppdefs.implicit)
-                mat_A[i,j,k,selvar] = dfactor*kz[i,j,k-1]*wz[i,j,k-1]
-	            mat_B[i,j,k,selvar] = (-1e0)*dfactor*( Kz[i,j,k]*wz[i,j,k] + Kz[i,j,k-1]*wz[i,j,k-1] )
-	            mat_C[i,j,k,selvar] = dfactor*Kz[i,j,k]*wz[i,j,k]
-            else
-                vardif[i, j, k] = dfactor * (dvardzfc[k] * Kz[i, j, k] - dvardzfc[k-1] * Kz[i, j, k-1])
-            end
-        end
-        local dfactor = fac * Jac[i, j, NK] * wz[i, j, NK]
-        @static if (cppdefs.implicit)
-            mat_A[i,j,k,selvar] = dfactor*Kz[i,j,k-1]*wz[i,j,k-1]
-            mat_B[i,j,k,selvar] = (-1e0)*dfactor*Kz[i,j,k-1]*wz[i,j,k-1]   
-        else
-            vardif[i, j, NK] = dfactor * (dvardzfc[NK] * Kz[i, j, NK] - dvardzfc[NK-1] * Kz[i, j, NK-1])
-        end
-
+# Kz from the surface stress (Ekman-layer profile), all levels k = 0:NK
+@kernel function k_mixv_kz!(Kz, stress_top, ffc, zf, KzmaxTr, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds begin
+        local ustar = sqrt(stress_top[i, j] / R0)
+        local ff = ffc[i, j] * FPAR
+        local Ekdepth = 0.4e0 * ustar / ff
+        local zextent = 0.5e0 * Ekdepth
+        local ztransit = -Ekdepth
+        local zdep = zf[i, j, k] * DL
+        local thy = (1e0 + tanh(((zdep - ztransit) / zextent) * PI)) * 0.5e0
+        Kz[i, j, k] = max(0.01e0, thy) * KzmaxTr
     end
 end
 
-function mixing_vertical(var, vardif, m, step, iv_compute_kzl, selvar)
+# vertical gradient on the face k+1/2 (dvardzfc), 0 at k = 0 and k = NK
+@inline mixv_dzfc(wz, var, i, j, k) = (k == 0 || k == NK) ? 0e0 : wz[i, j, k] * (var[i, j, k+1] - var[i, j, k])
+
+# vertical diffusion of var, one work item per point (explicit scheme; the implicit-mixing matrices
+# of the Fortran are not ported: cppdefs.implicit is off)
+@kernel function k_mixing_vertical!(vardif, var, Jac, wz, Kz, fac, lo)
+    i, j, k = @index(Global, NTuple) .+ lo
+    @inbounds begin
+        local dfactor = fac * Jac[i, j, k] * wz[i, j, k]
+        vardif[i, j, k] = dfactor * (mixv_dzfc(wz, var, i, j, k) * Kz[i, j, k] - mixv_dzfc(wz, var, i, j, k - 1) * Kz[i, j, k-1])
+    end
+end
+
+function mixing_vertical(var, vardif, m, step, iv_compute_kzl, selvar, S=DEV)
     local Kzmax = 1e-3
     local KzmaxTr = 1e-3
     local facb = RR * DL
@@ -64,29 +51,11 @@ function mixing_vertical(var, vardif, m, step, iv_compute_kzl, selvar)
         end
     else
         if (iv_compute_kzl == 1)
-            for j in 1:NJ
-                for i in 1:NI
-                    local ustar = sqrt(stress_top[i, j] / R0)
-                    local ff = ffc[i, j] * FPAR
-                    local Ekdepth = 0.4e0 * ustar / ff
-                    local zextent = 0.5e0 * Ekdepth
-                    local ztransit = -Ekdepth
-                    for k in NK:-1:0
-                        Kz[i, j, k] = 1e0
-                        local zdep = zf[i, j, k] * DL
-                        local thy = (1e0 + tanh(((zdep - ztransit) / zextent) * PI)) * 0.5e0
-                        Kz[i, j, k] = max(0.01e0, thy) * KzmaxTr
-                    end
-                end
-            end
+            launch!(S, k_mixv_kz!, (1:NI, 1:NJ, 0:NK), S.Kz, S.stress_top, S.ffc, S.zf, KzmaxTr)
         end
     end
     
-    local chunks = Iterators.partition(1:NJ*NI, div(NJ*NI, Threads.nthreads()))
-    local tasks = map(chunks) do area
-        Threads.@spawn mixing_vertical_worker(area, fac, var, vardif)
-    end
-    wait.(tasks)
+    launch!(S, k_mixing_vertical!, (1:NI, 1:NJ, 1:NK), vardif, var, S.Jac, S.wz, S.Kz, fac)
     
 end
 
