@@ -27,7 +27,7 @@ function initialize()
 
     pcorr = zeros(rc_kind, maxout)
 
-    include("../inc/ini_param.jl")
+    include(joinpath(@__DIR__, "..", "inc", "ini_param.jl"))   # relative to this file, also when called from other scripts
 
     @static if (cppdefs.relaxation)
         set_coef()
