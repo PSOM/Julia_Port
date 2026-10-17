@@ -314,13 +314,14 @@ end
 "unit tests of the routines inside hsolve, on the current (Julia) state"
 function unit_hsolve(dtim)
     chJ = zeros(9, NI, NJ); rhsJ = zeros(NI, NJ); chF = zeros(9, NI, NJ); rhsF = zeros(NI, NJ)
-    chfine(dtim, chJ, rhsJ); DT.fcall(ctx, "chfine", DT.R(dtim), chF, rhsF)
+    chfine(dtim, chJ, rhsJ, HOST); DT.fcall(ctx, "chfine", DT.R(dtim), chF, rhsF)
     cmpreport("  unit chfine", ("ch", chJ, chF), ("rhs", rhsJ, rhsF))
     hJ = copy(h); hF = copy(parent(h))
-    hfill(dtim, hJ, hsolve_getSum()); DT.fcall(ctx, "hfill", DT.R(dtim), hF)
+    hsums = zeros(NI, 12); hsolve_sums!(hsums, HOST)
+    hfill(dtim, hJ, hsums, HOST); DT.fcall(ctx, "hfill", DT.R(dtim), hF)
     cmpreport("  unit hfill", ("h", parent(hJ), hF))
     hJ = copy(h); hF = copy(parent(h))
-    mprove(hJ, chJ, rhsJ, dtim); DT.fcall(ctx, "mprove", hF, chJ, rhsJ, DT.R(dtim))
+    mprove(hJ, chJ, rhsJ, dtim, HOST); DT.fcall(ctx, "mprove", hF, chJ, rhsJ, DT.R(dtim))
     cmpreport("  unit mprove", ("h", parent(hJ), hF))
 end
 "Fortran header array as a Julia array with the same axes as the mapped Julia global (aliases Fortran memory)"

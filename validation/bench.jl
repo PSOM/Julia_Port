@@ -1,6 +1,6 @@
 # CPU timing of the Julia model: time per step after warm-up (excludes compilation and init).
 #
-# Usage: [PSOM_SIZE="NI NJ NK ngrid"] julia -t<threads> --project=validation validation/bench.jl <experiment> [nsteps=10]
+# Usage: [PSOM_SIZE="NI NJ NK ngrid"] [PSOM_BACKEND=cpu|cuda|amdgpu] julia -t<threads> --project=validation validation/bench.jl <experiment> [nsteps=10]
 # Needs runs/<exp>[_size]/julia/namelist.yml (written by run_case.sh). Output and pickups are disabled.
 
 const expe = length(ARGS) >= 1 ? ARGS[1] : "wiggle"
@@ -35,13 +35,13 @@ using Printf, Statistics, Profile
 redirect_stdout(devnull) do
     global pcorr, istep = initialize()
 end
-t1 = @elapsed redirect_stdout(() -> step!(pcorr, istep + 1), devnull)   # includes compilation
+t1 = @elapsed (redirect_stdout(() -> step!(pcorr, istep + 1), devnull); dsync())   # includes compilation
 times = Float64[]; allocs = Int[]; bytes = Int[]
 for st in istep+2:istep+1+nbench
-    r = @timed redirect_stdout(() -> step!(pcorr, st), devnull)
+    r = @timed (redirect_stdout(() -> step!(pcorr, st), devnull); dsync())
     push!(times, r.time); push!(bytes, r.bytes)
 end
-@printf("julia %s%s threads=%d  first step (with compilation) %.2f s\n", expe, SIZE_SFX, Threads.nthreads(), t1)
+@printf("julia %s%s backend=%s threads=%d  first step (with compilation) %.2f s\n", expe, SIZE_SFX, PSOM_BACKEND, Threads.nthreads(), t1)
 @printf("  per step: median %.4f s  min %.4f s  (%d steps)  allocated %.1f MB/step\n",
         median(times), minimum(times), nbench, mean(bytes) / 2^20)
 

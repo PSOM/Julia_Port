@@ -67,7 +67,7 @@ if [ $run_j = 1 ]; then
     sed -i '' -E 's/^( *const +file_output_cdf *=).*/\1false/' "$code/exe/$enddir/inc/cppdefs.jl"
     sed -i '' -E 's/^( *const +file_output(_bin)? *=).*/\1true/' "$code/exe/$enddir/inc/cppdefs.jl"
     [ -n "$PSOM_SIZE" ] && write_size_jl "$code/exe/$enddir/inc/size.jl"
-    (cd "$code/exe/$enddir" && JULIA_PROJECT="$here" julia -t1 -- src/main.jl "$rdir/julia/namelist.yml" > "$rdir/julia/log.txt" 2>&1) \
+    (cd "$code/exe/$enddir" && JULIA_PROJECT="$here" julia -t${PSOM_THREADS:-1} -- src/main.jl "$rdir/julia/namelist.yml" > "$rdir/julia/log.txt" 2>&1) \
         || { echo "julia FAILED, tail of log:"; tail -20 "$rdir/julia/log.txt"; exit 1; }
     echo "julia done: $(grep -c 'kinetic' "$rdir/julia/log.txt") KE lines"
 fi

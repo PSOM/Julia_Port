@@ -8,6 +8,7 @@
 # Cases: wiggle (10 steps), sche (wiggle, Shchepetkin, 10), hydro (wiggle, fnhhy=0, 10), waves (16x192x96, 3)
 # Env: PSOM_BACKEND (cpu | jlarray | cuda | amdgpu) is passed through to the Julia runs.
 #      REGRESS_BASELINE: name of the baseline directory (default julia_baseline).
+#      PSOM_THREADS: Julia threads for the runs (default 1).
 set -e
 base="${REGRESS_BASELINE:-julia_baseline}"
 here="$(cd "$(dirname "$0")" && pwd)"
