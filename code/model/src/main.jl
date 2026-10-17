@@ -16,8 +16,9 @@ end
     using .particles
 end
 
-# Main decl                                      
-function main()
+# Initialisation (everything before the time loop of main.f90).
+# Returns (pcorr, initial_step).
+function initialize()
     step = 0::Int
 
     fdiv = 0e0::rc_kind
@@ -115,6 +116,80 @@ function main()
 
     end
 
+    # initial output only when not restarting from a pickup (as in main.f90)
+    @static if (cppdefs.file_output)
+        if (pickup_step < -0.5)
+            @static if (cppdefs.file_output_cdf)
+                write_cdf(step, 0)
+            end
+            @static if (cppdefs.file_output_bin)
+                write_bin(step)
+            end
+        end
+    end
+
+    diag_energy(step)
+    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
+
+
+    return pcorr, initial_step
+end
+
+#########################################################
+##               END OF INITIALISATION                 ##
+#########################################################
+
+# One time step (body of the time loop of main.f90)
+function step!(pcorr, step)
+    global time_nondim = dtf * step
+    @fortSet("time_nondim", time_nondim, rc_kind)
+    global time_seconds = time_nondim * TL
+    @fortSet("time_seconds", time_seconds, rc_kind)
+
+    #preproc allow_particle
+    @static if (cppdefs.allow_particle)
+        if (step == ini_particle_time)
+            println("INITIALIZATION OF PARTICLES ", NPR)
+            particles.ini_particles(step) #get the particle velocity for the first step
+            particles.get_parti_vel(step)
+            for i in 1:NP
+                parti[i].i = parti[i].i + dtf * parti[i].u
+                parti[i].j = parti[i].j + dtf * parti[i].v
+                parti[i].k = parti[i].k + dtf * parti[i].w
+                parti[i].u0 = parti[i].u
+                parti[i].v0 = parti[i].v
+                parti[i].w0 = parti[i].w
+            end
+        end
+    end
+
+    diag_n2()
+    #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
+
+    #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
+    momentum(pcorr, step)
+
+
+    diag_n2budget(step)
+    #@ccall "./PSOM_LIB.so".diag_n2budget_(Ref(step)::Ptr{Int})::Cvoid
+
+    diag_energy(step)
+    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
+
+    global hmean = meanh(NI, NJ, h)
+    @fortSet("hmean", hmean, rc_kind)
+    #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
+
+    @static if (cppdefs.allow_particle)
+        if (step > ini_particle_time - 1)
+            get_parti_vel(step)
+            parti_forward()
+            if (mod(step, parti_outfreq) == 0)
+                save_parti(step)
+            end
+        end
+    end
+
     @static if (cppdefs.file_output)
         @static if (cppdefs.file_output_cdf)
             write_cdf(step, 0)
@@ -126,82 +201,16 @@ function main()
         end
     end
 
-    diag_energy(step)
-    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
+end
 
-
-    #########################################################
-    ##               END OF INITIALISATION                 ##
-    #########################################################
-
-    istep = initial_step
-    nstep = nsteps
-
-    for step in (istep+1:istep+nstep)
-        global time_nondim = dtf * step
-        @fortSet("time_nondim", time_nondim, rc_kind)
-        global time_seconds = time_nondim * TL
-        @fortSet("time_seconds", time_seconds, rc_kind)
-
-        #preproc allow_particle
-        @static if (cppdefs.allow_particle)
-            if (step == ini_particle_time)
-                println("INITIALIZATION OF PARTICLES ", NPR)
-                particles.ini_particles(step) #get the particle velocity for the first step
-                particles.get_parti_vel(step)
-                for i in 1:NP
-                    parti[i].i = parti[i].i + dtf * parti[i].u
-                    parti[i].j = parti[i].j + dtf * parti[i].v
-                    parti[i].k = parti[i].k + dtf * parti[i].w
-                    parti[i].u0 = parti[i].u
-                    parti[i].v0 = parti[i].v
-                    parti[i].w0 = parti[i].w
-                end
-            end
-        end
-
-        diag_n2()
-        #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
-
-        #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
-        momentum(pcorr, step)
-
-
-        diag_n2budget(step)
-        #@ccall "./PSOM_LIB.so".diag_n2budget_(Ref(step)::Ptr{Int})::Cvoid
-
-        diag_energy(step)
-        #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
-
-        global hmean = meanh(NI, NJ, h)
-        @fortSet("hmean", hmean, rc_kind)
-        #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
-
-        @static if (cppdefs.allow_particle)
-            if (step > ini_particle_time - 1)
-                then
-                get_parti_vel(step)
-                parti_forward()
-                if (mod(step, parti_outfreq) == 0)
-                    save_parti(step)
-                end
-            end
-        end
-
-        @static if (cppdefs.file_output)
-            @static if (cppdefs.file_output_cdf)
-                write_cdf(step, 0)
-                #@ccall "./PSOM_LIB.so".write_cdf_(Ref(step)::Ptr{Int}, Ref(0)::Ptr{Int})::Cvoid
-            end
-            @static if (cppdefs.file_output_bin)
-                write_bin(step)
-                #@ccall "./PSOM_LIB.so".write_bin_(Ref(step)::Ptr{Int})::Cvoid
-            end
-        end
-
+function main()
+    pcorr, initial_step = initialize()
+    for step in (initial_step+1:initial_step+nsteps)
+        step!(pcorr, step)
     end
 end
 
-#main()
-@time main()
-#@profview main()
+# run only when executed as a script (validation/bench.jl includes this file without running it)
+if abspath(PROGRAM_FILE) == @__FILE__
+    @time main()
+end
