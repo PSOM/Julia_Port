@@ -1,7 +1,8 @@
 # CPU timing of the Julia model: time per step after warm-up (excludes compilation and init).
 #
 # Usage: [PSOM_SIZE="NI NJ NK ngrid"] [PSOM_BACKEND=cpu|cuda|amdgpu] julia -t<threads> --project=validation validation/bench.jl <experiment> [nsteps=10]
-# Needs runs/<exp>[_size]/julia/namelist.yml (written by run_case.sh). Output and pickups are disabled.
+# Namelist: runs/<exp>[_size]/julia/namelist.yml (written by run_case.sh) if present, else the experiment's
+# namelist*.yml. Output and pickups are disabled.
 
 const expe = length(ARGS) >= 1 ? ARGS[1] : "wiggle"
 const nbench = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 10
@@ -22,6 +23,10 @@ let f = joinpath(EXE, "inc", "cppdefs.jl")
 end
 mkpath(RDIR)
 let src = joinpath(VAL, "runs", expe * SIZE_SFX, "julia", "namelist.yml")
+    if !isfile(src)    # no run_case.sh output for this size: the experiment's own namelist
+        d = expe == "model" ? CODE : joinpath(CODE, expe)
+        src = joinpath(d, first(filter(f -> occursin(r"^namelist.*\.yml$", f), readdir(d))))
+    end
     s = read(src, String)
     s = replace(s, r"pickup_int:.*" => "pickup_int: 1000000", r"dirout:.*" => "dirout: \"$RDIR/\"",
                 r"nsteps:.*" => "nsteps: $(nbench + 1)")
