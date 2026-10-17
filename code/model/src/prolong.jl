@@ -15,7 +15,57 @@ function findn(x, y, z)
 end
 
 
-function prolong(nxm, nym, nzm, cor, fin)
+# Each coarse cell (i,j,k) updates its own 8 fine points (2i..2i+1, 2j..2j+1, 2k..2k+1): no overlap.
+@kernel function k_prolong!(fin, cor, an, bn, cn, dn, en, fn, gn, hn, lo)
+      i, j, k = @index(Global, NTuple) .+ lo
+      @inbounds begin
+            local iw = i * 2
+            local js = j * 2
+            local kb = k * 2
+            fin[iw, js, kb] = fin[iw, js, kb] +
+                                    an[1] * cor[i, j, k] + an[2] * cor[i+1, j, k] +
+                                    an[3] * cor[i+1, j+1, k] + an[4] * cor[i, j+1, k] +
+                                    an[5] * cor[i, j, k+1] + an[6] * cor[i+1, j, k+1] +
+                                    an[7] * cor[i+1, j+1, k+1] + an[8] * cor[i, j+1, k+1]
+            fin[iw+1, js, kb] = fin[iw+1, js, kb] +
+                                    bn[1] * cor[i, j, k] + bn[2] * cor[i+1, j, k] +
+                                    bn[3] * cor[i+1, j+1, k] + bn[4] * cor[i, j+1, k] +
+                                    bn[5] * cor[i, j, k+1] + bn[6] * cor[i+1, j, k+1] +
+                                    bn[7] * cor[i+1, j+1, k+1] + bn[8] * cor[i, j+1, k+1]
+            fin[iw+1, js+1, kb] = fin[iw+1, js+1, kb] +
+                                    cn[1] * cor[i, j, k] + cn[2] * cor[i+1, j, k] +
+                                    cn[3] * cor[i+1, j+1, k] + cn[4] * cor[i, j+1, k] +
+                                    cn[5] * cor[i, j, k+1] + cn[6] * cor[i+1, j, k+1] +
+                                    cn[7] * cor[i+1, j+1, k+1] + cn[8] * cor[i, j+1, k+1]
+            fin[iw, js+1, kb] = fin[iw, js+1, kb] +
+                                    dn[1] * cor[i, j, k] + dn[2] * cor[i+1, j, k] +
+                                    dn[3] * cor[i+1, j+1, k] + dn[4] * cor[i, j+1, k] +
+                                    dn[5] * cor[i, j, k+1] + dn[6] * cor[i+1, j, k+1] +
+                                    dn[7] * cor[i+1, j+1, k+1] + dn[8] * cor[i, j+1, k+1]
+            fin[iw, js, kb+1] = fin[iw, js, kb+1] +
+                                    en[1] * cor[i, j, k] + en[2] * cor[i+1, j, k] +
+                                    en[3] * cor[i+1, j+1, k] + en[4] * cor[i, j+1, k] +
+                                    en[5] * cor[i, j, k+1] + en[6] * cor[i+1, j, k+1] +
+                                    en[7] * cor[i+1, j+1, k+1] + en[8] * cor[i, j+1, k+1]
+            fin[iw+1, js, kb+1] = fin[iw+1, js, kb+1] +
+                                    fn[1] * cor[i, j, k] + fn[2] * cor[i+1, j, k] +
+                                    fn[3] * cor[i+1, j+1, k] + fn[4] * cor[i, j+1, k] +
+                                    fn[5] * cor[i, j, k+1] + fn[6] * cor[i+1, j, k+1] +
+                                    fn[7] * cor[i+1, j+1, k+1] + fn[8] * cor[i, j+1, k+1]
+            fin[iw+1, js+1, kb+1] = fin[iw+1, js+1, kb+1] +
+                                    gn[1] * cor[i, j, k] + gn[2] * cor[i+1, j, k] +
+                                    gn[3] * cor[i+1, j+1, k] + gn[4] * cor[i, j+1, k] +
+                                    gn[5] * cor[i, j, k+1] + gn[6] * cor[i+1, j, k+1] +
+                                    gn[7] * cor[i+1, j+1, k+1] + gn[8] * cor[i, j+1, k+1]
+            fin[iw, js+1, kb+1] = fin[iw, js+1, kb+1] +
+                                    hn[1] * cor[i, j, k] + hn[2] * cor[i+1, j, k] +
+                                    hn[3] * cor[i+1, j+1, k] + hn[4] * cor[i, j+1, k] +
+                                    hn[5] * cor[i, j, k+1] + hn[6] * cor[i+1, j, k+1] +
+                                    hn[7] * cor[i+1, j+1, k+1] + hn[8] * cor[i, j+1, k+1]
+      end
+end
+
+function prolong(nxm, nym, nzm, cor, fin, S=DEV)
       local x = 0.25e0
       local y = 0.25e0
       local z = 0.25e0
@@ -35,54 +85,5 @@ function prolong(nxm, nym, nzm, cor, fin)
       local gn = findn(x, y, z)
       x = x - 0.5e0
       local hn = findn(x, y, z)
-
-      for k in 0:nzm
-            local kb = k * 2
-            for j in 0:nym
-                  local js = j * 2
-                  for i in 0:nxm
-                        local iw = i * 2
-                        fin[iw, js, kb] = fin[iw, js, kb] +
-                                                an[1] * cor[i, j, k] + an[2] * cor[i+1, j, k] +
-                                                an[3] * cor[i+1, j+1, k] + an[4] * cor[i, j+1, k] +
-                                                an[5] * cor[i, j, k+1] + an[6] * cor[i+1, j, k+1] +
-                                                an[7] * cor[i+1, j+1, k+1] + an[8] * cor[i, j+1, k+1]
-                        fin[iw+1, js, kb] = fin[iw+1, js, kb] +
-                                                bn[1] * cor[i, j, k] + bn[2] * cor[i+1, j, k] +
-                                                bn[3] * cor[i+1, j+1, k] + bn[4] * cor[i, j+1, k] +
-                                                bn[5] * cor[i, j, k+1] + bn[6] * cor[i+1, j, k+1] +
-                                                bn[7] * cor[i+1, j+1, k+1] + bn[8] * cor[i, j+1, k+1]
-                        fin[iw+1, js+1, kb] = fin[iw+1, js+1, kb] +
-                                                cn[1] * cor[i, j, k] + cn[2] * cor[i+1, j, k] +
-                                                cn[3] * cor[i+1, j+1, k] + cn[4] * cor[i, j+1, k] +
-                                                cn[5] * cor[i, j, k+1] + cn[6] * cor[i+1, j, k+1] +
-                                                cn[7] * cor[i+1, j+1, k+1] + cn[8] * cor[i, j+1, k+1]
-                        fin[iw, js+1, kb] = fin[iw, js+1, kb] +
-                                                dn[1] * cor[i, j, k] + dn[2] * cor[i+1, j, k] +
-                                                dn[3] * cor[i+1, j+1, k] + dn[4] * cor[i, j+1, k] +
-                                                dn[5] * cor[i, j, k+1] + dn[6] * cor[i+1, j, k+1] +
-                                                dn[7] * cor[i+1, j+1, k+1] + dn[8] * cor[i, j+1, k+1]
-                        fin[iw, js, kb+1] = fin[iw, js, kb+1] +
-                                                en[1] * cor[i, j, k] + en[2] * cor[i+1, j, k] +
-                                                en[3] * cor[i+1, j+1, k] + en[4] * cor[i, j+1, k] +
-                                                en[5] * cor[i, j, k+1] + en[6] * cor[i+1, j, k+1] +
-                                                en[7] * cor[i+1, j+1, k+1] + en[8] * cor[i, j+1, k+1]
-                        fin[iw+1, js, kb+1] = fin[iw+1, js, kb+1] +
-                                                fn[1] * cor[i, j, k] + fn[2] * cor[i+1, j, k] +
-                                                fn[3] * cor[i+1, j+1, k] + fn[4] * cor[i, j+1, k] +
-                                                fn[5] * cor[i, j, k+1] + fn[6] * cor[i+1, j, k+1] +
-                                                fn[7] * cor[i+1, j+1, k+1] + fn[8] * cor[i, j+1, k+1]
-                        fin[iw+1, js+1, kb+1] = fin[iw+1, js+1, kb+1] +
-                                                gn[1] * cor[i, j, k] + gn[2] * cor[i+1, j, k] +
-                                                gn[3] * cor[i+1, j+1, k] + gn[4] * cor[i, j+1, k] +
-                                                gn[5] * cor[i, j, k+1] + gn[6] * cor[i+1, j, k+1] +
-                                                gn[7] * cor[i+1, j+1, k+1] + gn[8] * cor[i, j+1, k+1]
-                        fin[iw, js+1, kb+1] = fin[iw, js+1, kb+1] +
-                                                hn[1] * cor[i, j, k] + hn[2] * cor[i+1, j, k] +
-                                                hn[3] * cor[i+1, j+1, k] + hn[4] * cor[i, j+1, k] +
-                                                hn[5] * cor[i, j, k+1] + hn[6] * cor[i+1, j, k+1] +
-                                                hn[7] * cor[i+1, j+1, k+1] + hn[8] * cor[i, j+1, k+1]
-                  end
-            end
-      end
+      launch!(S, k_prolong!, (0:nxm, 0:nym, 0:nzm), fin, cor, an, bn, cn, dn, en, fn, gn, hn)
 end

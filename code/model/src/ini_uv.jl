@@ -116,7 +116,7 @@ function ini_uv(n)
             end
          end
       end
-      mgpfill(fzero, p)
+      mgpfill(fzero, p, HOST)
       #@ccall "./PSOM_LIB.so".mgpfill_(Ref(fzero)::Ref{rc_kind}, pointer(p)::Ptr{rc_kind})::Cvoid
       #     filter                                                            
       for m in 1:8
