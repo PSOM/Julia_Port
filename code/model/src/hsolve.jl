@@ -33,44 +33,25 @@ function hsolve(h,oldh,hdt,dtime)
 
 
   local rlx::rc_kind = 1.72e0
+  local nci = ncolours_i(NI)
 
   for iter in 1:100
-    for j in 1:NJ
-      local i = 1
-      local hstar = ( ch[2, i, j] * h[i+1, j]
-                    + ch[3, i, j] * h[NI, j] 
-                    + ch[4, i, j] * h[i, j+1] 
-                    + ch[5, i, j] * h[i, j-1] 
-                    + ch[6, i, j] * h[i+1, j+1] 
-                    + ch[7, i, j] * h[NI, j+1] 
-                    + ch[8, i, j] * h[i+1, j-1] 
-                    + ch[9, i, j] * h[NI, j-1] 
-                    - rhs[i, j]) / (-ch[1, i, j])
-      h[i, j] = (1e0 - rlx) * h[i, j] + rlx * hstar
-
-      for i in 2:NI-1
-        local hstar = ( ch[2, i, j] * h[i+1, j]
-                      + ch[3, i, j] * h[i-1, j] 
-                      + ch[4, i, j] * h[i, j+1] 
-                      + ch[5, i, j] * h[i, j-1] 
-                      + ch[6, i, j] * h[i+1, j+1] 
-                      + ch[7, i, j] * h[i-1, j+1] 
-                      + ch[8, i, j] * h[i+1, j-1] 
-                      + ch[9, i, j] * h[i-1, j-1] 
+    # multi-colour SOR sweep (see colour_irange in linerelax_periodicew.jl), as in the Fortran
+    for cj in 1:2, ci in 1:nci
+      for j in cj:2:NJ, i in colour_irange(NI, ci, nci)
+        local im1 = i == 1 ? NI : i - 1
+        local ip1 = i == NI ? 1 : i + 1
+        local hstar = ( ch[2, i, j] * h[ip1, j]
+                      + ch[3, i, j] * h[im1, j]
+                      + ch[4, i, j] * h[i, j+1]
+                      + ch[5, i, j] * h[i, j-1]
+                      + ch[6, i, j] * h[ip1, j+1]
+                      + ch[7, i, j] * h[im1, j+1]
+                      + ch[8, i, j] * h[ip1, j-1]
+                      + ch[9, i, j] * h[im1, j-1]
                       - rhs[i, j]) / (-ch[1, i, j])
         h[i, j] = (1e0 - rlx) * h[i, j] + rlx * hstar
       end
-      local i = NI
-      local hstar = ( ch[2, i, j] * h[1, j]
-                    + ch[3, i, j] * h[i-1, j] 
-                    + ch[4, i, j] * h[i, j+1] 
-                    + ch[5, i, j] * h[i, j-1] 
-                    + ch[6, i, j] * h[1, j+1] 
-                    + ch[7, i, j] * h[i-1, j+1] 
-                    + ch[8, i, j] * h[1, j-1] 
-                    + ch[9, i, j] * h[i-1, j-1] 
-                    - rhs[i, j]) / (-ch[1, i, j])
-      h[i, j] = (1e0 - rlx) * h[i, j] + rlx * hstar
     end
 
     for l in 1:3
