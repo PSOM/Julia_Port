@@ -157,10 +157,10 @@ function advection_and_mixing(m, n, dtimel, step)
                 local lc_diff = @views @. dtimel * JacInv[1:NI, 1:NJ, 1:NK] .* uvarx[1:NI, 1:NJ, 1:NK]
                 
                 @views @. cz[1:NI, 1:NJ, 1:NK] = w[1:NI, 1:NJ, 1:NK, 0] - lc_diff
-                for it in 1:ntr
-                    if (selvar == 5 + it)
-                             @views @. Tr[it, 1:NI, 1:NJ, 1:NK, n] = Tr[it, 1:NI, 1:NJ, 1:NK, 0] - lc_diff
-                    end
+            end
+            for it in 1:ntr
+                if (selvar == 5 + it)
+                    @views @. Tr[it, 1:NI, 1:NJ, 1:NK, n] = Tr[it, 1:NI, 1:NJ, 1:NK, 0] - dtimel * JacInv[1:NI, 1:NJ, 1:NK] * uvarx[1:NI, 1:NJ, 1:NK]
                 end
             end
         end
