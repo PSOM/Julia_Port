@@ -75,6 +75,7 @@ fi
 size_jl="$code/model/inc/size.jl"; [ -f "$code/$expe/inc/size.jl" ] && size_jl="$code/$expe/inc/size.jl"
 read NI NJ NK ntr <<< $(awk -F= '/const NI/{ni=$2} /const NJ/{nj=$2} /const NK/{nk=$2} /const ntr/{nt=$2} END{print ni+0, nj+0, nk+0, nt+0}' "$size_jl")
 [ -n "$PSOM_SIZE" ] && read NI NJ NK <<< "$(echo $PSOM_SIZE | awk '{print $1, $2, $3}')"
+echo "$NI $NJ $NK $ntr" > "$rdir/dims.txt"
 JULIA_PROJECT="$here" julia "$here/compare.jl" "$rdir/fortran" "$rdir/julia" $NI $NJ $NK $ntr > "$rdir/compare.txt"
 paste <(grep kinetic "$rdir/fortran/log.txt" | awk '{print $NF}') <(grep kinetic "$rdir/julia/log.txt" | awk '{print $NF}') \
     | awk '{d=$1-$2; if (d<0) d=-d; printf "KE step %2d  F=%.15e  J=%.15e  rel=%.2e\n", NR-1, $1, $2, d/$1}' > "$rdir/ke.txt"
