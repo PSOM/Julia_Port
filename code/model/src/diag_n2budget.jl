@@ -48,10 +48,11 @@ function diag_n2budget(step)
    #     avezf and avezc are positive (in m)                               
 
    #     Integrate vertically, down to 0.9*MLD, 0.75*MLD , and 0.4*MLD     
+   # same order as diag_n2budget.f90: testdepth(1)=0.5, (2)=0.75, (3)=0.9 * mldepth
    local testdepth = [
-      0.9e0 * mldepth,
+      0.5e0 * mldepth,
       0.75e0 * mldepth,
-      0.5e0 * mldepth
+      0.9e0 * mldepth
    ]
 
    for m in 1:3
