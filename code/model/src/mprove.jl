@@ -85,7 +85,7 @@ function mprove(h,ch,oldrhs,dtime)
     local maxres = 0e0
     for j in 1:NJ
       local i = 1
-      local res = (ch[1,i,j] * he[i, j]
+      local res = rhs[i, j] - (ch[1,i,j] * he[i, j]
                + ch[2,i,j] * he[i+1, j]
                + ch[3,i,j] * he[NI, j]
                + ch[4,i,j] * he[i, j+1]
@@ -96,7 +96,7 @@ function mprove(h,ch,oldrhs,dtime)
                + ch[9,i,j] * he[NI, j-1])
       maxres = max(maxres, abs(res))
       for i in 2:NI-1
-        local res = (ch[1,i,j] * he[i, j]
+        local res = rhs[i, j] - (ch[1,i,j] * he[i, j]
                + ch[2,i,j] * he[i+1, j]
                + ch[3,i,j] * he[i-1, j]
                + ch[4,i,j] * he[i, j+1]
@@ -108,7 +108,7 @@ function mprove(h,ch,oldrhs,dtime)
         maxres = max(maxres, abs(res))
       end
       local i = NI
-      local res = (ch[1,i,j] * he[i, j]
+      local res = rhs[i, j] - (ch[1,i,j] * he[i, j]
                + ch[2,i,j] * he[1, j]
                + ch[3,i,j] * he[i-1, j]
                + ch[4,i,j] * he[i, j+1]
@@ -121,7 +121,7 @@ function mprove(h,ch,oldrhs,dtime)
     end
 
     if (maxres > 3000)
-      println("mprove.jl: STOP. res too large, i,j,maxres=",i,",",j,",",maxres)
+      println("mprove.jl: STOP. res too large, maxres=", maxres)
       exit(1)
     end
     if (maxres < tol)
