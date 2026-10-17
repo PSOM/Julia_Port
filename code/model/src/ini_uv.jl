@@ -24,7 +24,7 @@ function ini_uv(n)
       rpevalgrad_Song(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_song_(Ref(n)::Ref{Int})::Cvoid
    else
-      rpevalgrad_Sche(n)
+      rpevalgrad_Sche(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_sche_(Ref(n)::Ref{Int})::Cvoid
 
       drpx[1:NI, 1:NJ, 1:NK] = ru4_Sche[1:NI, 1:NJ, 1:NK]
