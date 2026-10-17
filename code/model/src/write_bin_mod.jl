@@ -76,6 +76,16 @@ function w_pickup(filepath)
 
 end
 
+# Same raw stream layout as the Fortran w_pickup (write_bin_mod.f90): h,u,v,w,uf,vf,wf,T,S,Tr,p,gradhn,hxn,hyn.
+# Used to compare the Julia state with the Fortran reference (Julia_Port/validation).
+function w_pickup_bin(filepath)
+   open(filepath, "w") do file
+      for var in (h, u, v, w, uf, vf, wf, T, s, Tr, p, gradhn, hxn, hyn)
+         write(file, parent(var))
+      end
+   end
+end
+
 function r_pickup(filepath)
    #use header, only : h,u,v,w,uf,vf,wf,T,S,Tr,p,gradhn,hxn,hyn,rc_kind,dirout
    #integer :: step
