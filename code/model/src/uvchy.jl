@@ -33,7 +33,7 @@ function uvchy(dtimel)
     for i in 1:NI
       for k in 1:NK
         local wfk = 0.5e0 * (czf[i, j, k] + czf[i, j, k-1])
-        cz[i, j, k] = (wfk / Jac[i, j, k] - cx[i, j, k] * wx[i, j, k] - cy[i, j, k] * wy[i+1, j+1, k+1]) / (EPS * wz[i, j, k])
+        cz[i, j, k] = (wfk / Jac[i, j, k] - cx[i, j, k] * wx[i, j, k] - cy[i, j, k] * wy[i, j, k]) / (EPS * wz[i, j, k])
       end
     end
   end
