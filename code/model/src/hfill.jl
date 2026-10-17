@@ -19,7 +19,7 @@ function hfill(dtimel,hf, sums)
       for i in 1:NI
             local hxi = 0.25e0 * (hf[i+1, NJ] + hf[i+1, NJ+1] - hf[i-1, NJ] - hf[i-1, NJ+1])
             @views local sumcyf = sums.sumcyfnj[i]
-            @views local sumvf =  sums.sumvf[i]
+            @views local sumvf =  sums.sumvfn[i]   # north boundary: vfbcn (Fortran hfill.f90)
             @views local sumsjf = sums.sumsjfnj[i]
             @views local sumhyn = sums.sumhynnj[i]
             @views local sumgj =  sums.sumgjnj[i]
