@@ -55,10 +55,10 @@ function initialize()
     ini_uv(0)
     #@ccall "./PSOM_LIB.so".ini_uv_(Ref(0)::Ptr{Int})::Cvoid
 
-    fdiv = facediv(EPS)
+    fdiv = facediv(EPS, HOST)
     #@ccall "./PSOM_LIB.so".facediv_(Ref(EPS)::Ptr{rc_kind}, Ref(fdiv)::Ptr{rc_kind})::Cvoid
 
-    ctrdiv = cdiv(EPS, 0)
+    ctrdiv = cdiv(EPS, 0, HOST)
     #@ccall "./PSOM_LIB.so".cdiv_(Ref(EPS)::Ptr{rc_kind}, Ref(ctrdiv)::Ptr{rc_kind}, Ref(0)::Ptr{Int})::Cvoid
 
     vort(0)

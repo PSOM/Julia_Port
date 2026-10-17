@@ -151,7 +151,7 @@ function ini_setup(pcorr)
   ini_st()
   #@ccall "./PSOM_LIB.so".ini_st_()::Cvoid                                              # initialize s,T                                                    
   
-  evalrho(rho, 0)
+  evalrho(rho, 0, HOST)
   #@ccall "./PSOM_LIB.so".evalrho_(pointer(rho)::Ptr{rc_kind}, Ref(0)::Ref{Int})::Cvoid       # deduce rho from s,T 
 
   ini_h()

@@ -103,7 +103,7 @@ function diag_n2budget(step)
    #     FRONTAL TERM                                                      
    #     =============================                                     
    #     Calculate zeta*b top and bot divided by fH in per s^2     
-   evalrho(rho, 0)
+   evalrho(rho, 0, HOST)
    vort(0)
    #@ccall "./PSOM_LIB.so".vort_(Ref(0)::Ref{Int})::Cvoid
 

@@ -25,11 +25,12 @@ for c in "${cases[@]}"; do
     rdir="$here/runs/$exp$sfx${tag:+_$tag}"
     targs=(); [ -n "$tag" ] && targs=(--tag $tag)
     if [ "$mode" = save ]; then
-        bash "$here/run_case.sh" $exp $n "${args[@]}" "${targs[@]}" > /dev/null
+        bash "$here/run_case.sh" $exp $n "${args[@]}" "${targs[@]}" > /dev/null || { echo "$c: run FAILED (see $rdir/*/log.txt)"; exit 1; }
         rm -rf "$rdir/julia_baseline"; cp -r "$rdir/julia" "$rdir/julia_baseline"
         echo "$c: baseline saved ($rdir/julia_baseline)"
     else
-        bash "$here/run_case.sh" $exp $n --no-fortran "${args[@]}" "${targs[@]}" > /dev/null
+        bash "$here/run_case.sh" $exp $n --no-fortran "${args[@]}" "${targs[@]}" > /dev/null \
+            || { echo "$c: julia FAILED, tail of $rdir/julia/log.txt:"; tail -15 "$rdir/julia/log.txt"; exit 1; }
         read NI NJ NK ntr <<< "$(awk '{print $1,$2,$3,$4}' "$rdir/dims.txt")"
         b=$(JULIA_PROJECT="$here" julia "$here/compare.jl" "$rdir/julia_baseline" "$rdir/julia" $NI $NJ $NK $ntr | sed -n '/^worst/,$p' | awk 'NR>1{if ($2+0>m) {m=$2+0; f=$1}} END{printf "%.3e (%s)", m, f}')
         f=$(sed -n '/^worst/,$p' "$rdir/compare.txt" | awk 'NR>1{if ($2+0>m) {m=$2+0; f=$1}} END{printf "%.3e (%s)", m, f}')

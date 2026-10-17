@@ -1,29 +1,24 @@
-function vcenter(pf, dtimel, n)
+@kernel function k_vcenter!(u, v, w, pf, ux, vx, uy, vy, wx, wy, wz, cx, cy, si, sj, wf, Jac,
+                            n, dte, qpr, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local pxi = 0.5e0 * (pf[i+1, j, k] - pf[i-1, j, k])
+    local peta = 0.5e0 * (pf[i, j+1, k] - pf[i, j-1, k])
+    local psig = 0.5e0 * (pf[i, j, k+1] - pf[i, j, k-1])
+    local px = ux[i, j] * pxi + vx[i, j] * peta + wx[i, j, k] * psig
+    local py = uy[i, j] * pxi + vy[i, j] * peta + wy[i, j, k] * psig
+
+    u[i, j, k, n] = cx[i, j, k] - dte * (qpr * px + si[i, j, k])
+    v[i, j, k, n] = cy[i, j, k] - dte * (qpr * py + sj[i, j, k])
+
+    # w from the new u, v at the same point (the Fortran does this in a second loop)
+    local wfk = 0.5e0 * (wf[i, j, k] + wf[i, j, k-1])
+    w[i, j, k, n] = (wfk / Jac[i, j, k] - u[i, j, k, n] * wx[i, j, k] - v[i, j, k, n] * wy[i, j, k]) / (EPS * wz[i, j, k])
+  end
+end
+
+function vcenter(pf, dtimel, n, S=DEV)
   local dte = dtimel / EPS
-
-  for j in 1:NJ
-    for i in 1:NI
-      for k in 1:NK
-        local pxi = 0.5e0 * (pf[i+1, j, k] - pf[i-1, j, k])
-        local peta = 0.5e0 * (pf[i, j+1, k] - pf[i, j-1, k])
-        local psig = 0.5e0 * (pf[i, j, k+1] - pf[i, j, k-1])
-        local px = ux[i, j] * pxi + vx[i, j] * peta + wx[i, j, k] * psig
-        local py = uy[i, j] * pxi + vy[i, j] * peta + wy[i, j, k] * psig
-        local pz = wz[i, j, k] * psig
-
-        u[i, j, k, n] = cx[i, j, k] - dte * (qpr * px + si[i, j, k])
-        v[i, j, k, n] = cy[i, j, k] - dte * (qpr * py + sj[i, j, k])
-
-      end
-    end
-  end
-
-  for j in 1:NJ
-    for i in 1:NI
-      for k in 1:NK
-        local wfk = 0.5e0 * (wf[i, j, k] + wf[i, j, k-1])
-        w[i, j, k, n] = (wfk / Jac[i, j, k] - u[i, j, k, n] * wx[i, j, k] - v[i, j, k, n] * wy[i, j, k]) / (EPS * wz[i, j, k])
-      end
-    end
-  end
+  launch!(S, k_vcenter!, (1:NI, 1:NJ, 1:NK), S.u, S.v, S.w, pf, S.ux, S.vx, S.uy, S.vy, S.wx, S.wy, S.wz,
+          S.cx, S.cy, S.si, S.sj, S.wf, S.Jac, n, dte, qpr)
 end

@@ -80,7 +80,7 @@ function rpevalgrad_Sche(nl::Int)
   local g = gpr * 10e0
   local rho0 = R0
 
-  evalrho(rho, nl)
+  evalrho(rho, nl, HOST)
   rhol .= rho .- rho0
 
   # ------------------------

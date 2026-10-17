@@ -81,7 +81,7 @@ function ini_uv(n)
 
    #     COMPUTE NH PRESSURE                                               
    if (fnhhy > 0.9)
-      coriolis(n)
+      coriolis(n, HOST)
       #@ccall "./PSOM_LIB.so".coriolis_(Ref(n)::Ref{Int})::Cvoid
       
       srcface_nopy(n)

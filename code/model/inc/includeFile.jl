@@ -19,6 +19,7 @@ if (!@isdefined(INCLUDE_All))
     
     include("../inc/cppdefs.jl")
     include("../src/header.jl")
+    include("../src/arch.jl")         # backend selection, device copy D of the header arrays
     include("../src/momentum.jl")
     include("../src/cfdiv.jl")
     include("../src/advection_and_mixing.jl")

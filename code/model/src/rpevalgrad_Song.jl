@@ -19,7 +19,7 @@ function rpevalgrad_Song(n)
    findzall()
    
    #@ccall "./PSOM_LIB.so".evalrho_(pointer(rho)::Ptr{rc_kind}, Ref(n)::Ref{Int})::Cvoid
-   evalrho(rho, n)
+   evalrho(rho, n, HOST)
    # ===================================================================================
 
 

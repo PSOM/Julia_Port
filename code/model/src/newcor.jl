@@ -1,8 +1,5 @@
-function newcor(dtimel,n) 
-  local fac2 = EPS * lambda
-  local ainv = 1e0 / apr
-
-  si[1:NI, 1:NJ, 1:NK] .= 0e0
-  sj[1:NI, 1:NJ, 1:NK] .= 0e0
-  sk[1:NI, 1:NJ, 1:NK] .= 0e0
+function newcor(dtimel, n, S=DEV)
+  dfill!(S, S.si, 0e0, 1:NI, 1:NJ, 1:NK)
+  dfill!(S, S.sj, 0e0, 1:NI, 1:NJ, 1:NK)
+  dfill!(S, S.sk, 0e0, 1:NI, 1:NJ, 1:NK)
 end
