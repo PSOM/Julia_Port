@@ -40,7 +40,7 @@ function initialize()
     @fortSet("hmean", hmean, rc_kind)
     #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
 
-    sigma()
+    sigma(HOST)
     #@ccall "./PSOM_LIB.so".sigma_()::Cvoid
 
     staticsigma()

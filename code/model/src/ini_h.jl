@@ -57,7 +57,7 @@ function ini_h()
 
     staticsigma()
     #@ccall "./PSOM_LIB.so".staticsigma_()::Cvoid
-    rpevalgrad_Sche(0)
+    rpevalgrad_Sche(0, HOST)
     #@ccall "./PSOM_LIB.so".rpevalgrad_sche_(Ref(0)::Ref{Int})::Cvoid
 
     optionl = 1

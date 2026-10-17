@@ -1,382 +1,301 @@
-using OffsetArrays
+# Baroclinic pressure gradient, Shchepetkin & McWilliams (ROMS) scheme.
+#
+# Part I translates the PSOM variables into ROMS variables, Part II is the ROMS code, Part III translates
+# back. ROMS indices: imin = istr = istrU = 1, imax = iend = NI, jmin = jstr = jstrV = 1, jmax = jend = NJ,
+# N = NK. The work arrays FC, rx, dZx, dRx (2D per level k in ROMS) and dZ, dR (2D per row j) carry all
+# three indices here, so that the levels (rows) are computed in parallel.
 
+# Part I. Geometry and density anomaly, with the periodic x-boundaries of Hz and rhol.
+@kernel function k_rpSche_geom!(z_r, z_w, Hz, rhol, zc, zf, rho, rho0, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    z_r[i, j, k] = DL * zc[i, j, k]
+    z_w[i, j, k] = DL * zf[i, j, k]
+    if (k == 0)
+      z_w[i, j, k-1] = DL * zf[i, j, k-1]
+    end
+    # Boundary condition in x: Hz[0] = Hz[NI], Hz[NI+1] = Hz[1], same for rhol
+    local ii = (i == 0) ? NI : ((i == NI + 1) ? 1 : i)
+    if (1 <= k <= NK)
+      Hz[i, j, k] = (DL * zf[ii, j, k] - DL * zf[ii, j, k-1])
+    end
+    rhol[i, j, k] = rho[ii, j, k] - rho0
+  end
+end
 
-global const rpevalgrad_Sche_dZ = OffsetArray(zeros(rc_kind, (NI + 2, NK + 1)), 0:NI+1, 0:NK)
-global const rpevalgrad_Sche_dR = OffsetArray(zeros(rc_kind, (NI + 2, NK + 1)), 0:NI+1, 0:NK)
-global const rpevalgrad_Sche_FC = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_dZx = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_dRx = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_rx = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_dn_u = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_dm_v = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2)), 0:NI+1, 0:NJ+1)
-global const rpevalgrad_Sche_rhol = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2, NK + 2)), 0:NI+1, 0:NJ+1, 0:NK+1)
-global const rpevalgrad_Sche_z_r = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2, NK + 2)), 0:NI+1, 0:NJ+1, 0:NK+1)
-global const rpevalgrad_Sche_Hz = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2, NK + 2)), 0:NI+1, 0:NJ+1, 0:NK+1)
-global const rpevalgrad_Sche_z_w = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2, NK + 3)), 0:NI+1, 0:NJ+1, -1:NK+1)
-global const rpevalgrad_Sche_P_Sche = OffsetArray(zeros(rc_kind, (NI + 2, NJ + 2, NK)), 0:NI+1, 0:NJ+1, 1:NK)
+# Preliminary step (same for XI- and ETA-components); one work item per (i,j) column
+@kernel function k_rpSche_P!(P_Sche, dZ, dR, z_r, z_w, rhol, epsil, g, GRho, HalfGRho, lo)
+  i, j = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local N = NK
+    for k in 1:N-1
+      dZ[i, j, k] = z_r[i, j, k+1] - z_r[i, j, k]
+      dR[i, j, k] = rhol[i, j, k+1] - rhol[i, j, k]
+    end
+    dR[i, j, N] = dR[i, j, N-1]
+    dR[i, j, 0] = dR[i, j, 1]
+    dZ[i, j, N] = dZ[i, j, N-1]
+    dZ[i, j, 0] = dZ[i, j, 1]
+    for k in N:-1:1
+      local cff = 2e0 * dZ[i, j, k] * dZ[i, j, k-1]
+      dZ[i, j, k] = cff / (dZ[i, j, k] + dZ[i, j, k-1])
 
+      local cfr = 2e0 * dR[i, j, k] * dR[i, j, k-1]
+      if (cfr > epsil)
+        dR[i, j, k] = cfr / (dR[i, j, k] + dR[i, j, k-1])
+      else
+        dR[i, j, k] = 0e0
+      end
+    end
+    P_Sche[i, j, N] = 0e0 * g * z_w[i, j, N] + GRho * (rhol[i, j, N] + 0.5 * (rhol[i, j, N] - rhol[i, j, N-1]) * (z_w[i, j, N] - z_r[i, j, N]) / (z_r[i, j, N] - z_r[i, j, N-1])) * (z_w[i, j, N] - z_r[i, j, N])
+    for k in N-1:-1:1
+      P_Sche[i, j, k] = P_Sche[i, j, k+1] + HalfGRho * ((rhol[i, j, k+1] + rhol[i, j, k]) * (z_r[i, j, k+1] - z_r[i, j, k])
+                                                        -
+                                                        0.2e0 * ((dR[i, j, k+1] - dR[i, j, k]) * (z_r[i, j, k+1] - z_r[i, j, k] - (1e0 / 12e0) * (dZ[i, j, k+1] + dZ[i, j, k]))
+                                                                 -
+                                                                 (dZ[i, j, k+1] - dZ[i, j, k]) * (rhol[i, j, k+1] - rhol[i, j, k] - (1e0 / 12e0) * (dR[i, j, k+1] + dR[i, j, k]))))
+    end
+  end
+end
 
+# Caution:
+# The line P_Sche(i,j,N)=... has been modified !
+# The term g*z_w(i,j,N) has been set to 0 because PSOM only requires the baroclinic terms and not
+#  the barotropic part linked with surface elevation (g.R0.h).
 
-function rpevalgrad_Sche(nl::Int)
+# XI-component: FC, rx at i = 0:NI+1, j = 1:NJ.
+# This part has been included to take into account the boundary conditions (added by JBG, 20120425):
+# FC[1] = z_r[1] - z_r[NI], FC[0] = FC[NI], FC[NI+1] = FC[1]; same for rx.
+@kernel function k_rpSche_xi_fc!(FC, rx, z_r, rhol, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local ii = (i == 0) ? NI : ((i == NI + 1) ? 1 : i)
+    if (ii == 1)
+      FC[i, j, k] = z_r[1, j, k] - z_r[NI, j, k]
+      rx[i, j, k] = rhol[1, j, k] - rhol[NI, j, k]
+    else
+      FC[i, j, k] = z_r[ii, j, k] - z_r[ii-1, j, k]
+      rx[i, j, k] = rhol[ii, j, k] - rhol[ii-1, j, k]
+    end
+  end
+end
 
-  local dZ = rpevalgrad_Sche_dZ 
-  local dR = rpevalgrad_Sche_dR 
-  local FC = rpevalgrad_Sche_FC 
-  local dZx = rpevalgrad_Sche_dZx 
-  local dRx = rpevalgrad_Sche_dRx 
-  local rx = rpevalgrad_Sche_rx 
-  local dn_u = rpevalgrad_Sche_dn_u 
-  local dm_v = rpevalgrad_Sche_dm_v 
-  local rhol = rpevalgrad_Sche_rhol 
-  local z_r = rpevalgrad_Sche_z_r 
-  local Hz = rpevalgrad_Sche_Hz 
-  local z_w = rpevalgrad_Sche_z_w 
-  local P_Sche = rpevalgrad_Sche_P_Sche 
+@kernel function k_rpSche_xi_d!(dZx, dRx, FC, rx, epsil, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local cff = 2e0 * FC[i, j, k] * FC[i+1, j, k]
+    if (cff > epsil)
+      dZx[i, j, k] = cff / (FC[i, j, k] + FC[i+1, j, k])
+    else
+      dZx[i, j, k] = 0e0
+    end
+
+    local cfr = 2e0 * rx[i, j, k] * rx[i+1, j, k]
+    if (cfr > epsil)
+      dRx[i, j, k] = cfr / (rx[i, j, k] + rx[i+1, j, k])
+    else
+      dRx[i, j, k] = 0e0
+    end
+  end
+end
+
+# dn_u = dx
+@kernel function k_rpSche_ru!(ru_Sche, Hz, P_Sche, rhol, z_r, dZx, dRx, dn_u, HalfGRho, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    ru_Sche[i, j, k] = 0.5e0 * (Hz[i, j, k] + Hz[i-1, j, k]) * dn_u * (
+                             (P_Sche[i-1, j, k] - P_Sche[i, j, k]) - HalfGRho * (
+                               (rhol[i, j, k] + rhol[i-1, j, k]) * (z_r[i, j, k] - z_r[i-1, j, k])
+                               -
+                               0.2e0 * ((dRx[i, j, k] - dRx[i-1, j, k]) * (z_r[i, j, k] - z_r[i-1, j, k]
+                                                                         -
+                                                                         (1e0 / 12e0) * (dZx[i, j, k] + dZx[i-1, j, k]))
+                                        -
+                                        (dZx[i, j, k] - dZx[i-1, j, k]) * (rhol[i, j, k] - rhol[i-1, j, k]
+                                                                         -
+                                                                         (1e0 / 12e0) * (dRx[i, j, k] + dRx[i-1, j, k]))
+                               )
+                             )
+                           )
+  end
+end
+
+# ETA-component: FC, rx at i = 1:NI, j = 0:NJ+1.
+# This part has been altered to take into account the boundary conditions (modified by JBG, 20120425):
+# FC[jmin] = FC[jmin+1], FC[jmin-1] = FC[jmin], FC[jmax] = FC[jmax-1], FC[jmax+1] = FC[jmax]; same for rx.
+@kernel function k_rpSche_eta_fc!(FC, rx, z_r, rhol, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local jj = (j <= 1) ? 2 : ((j >= NJ) ? NJ - 1 : j)
+    FC[i, j, k] = (z_r[i, jj, k] - z_r[i, jj-1, k])
+    rx[i, j, k] = (rhol[i, jj, k] - rhol[i, jj-1, k])
+  end
+end
+
+@kernel function k_rpSche_eta_d!(dZx, dRx, FC, rx, epsil, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local cff = 2e0 * FC[i, j, k] * FC[i, j+1, k]
+    if (cff > epsil)
+      dZx[i, j, k] = cff / (FC[i, j, k] + FC[i, j+1, k])
+    else
+      dZx[i, j, k] = 0e0
+    end
+
+    local cfr = 2e0 * rx[i, j, k] * rx[i, j+1, k]
+    if (cfr > epsil)
+      dRx[i, j, k] = cfr / (rx[i, j, k] + rx[i, j+1, k])
+    else
+      dRx[i, j, k] = 0e0
+    end
+  end
+end
+
+# dm_v = dy
+@kernel function k_rpSche_rv!(rv_Sche, Hz, P_Sche, rhol, z_r, dZx, dRx, dm_v, HalfGRho, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    rv_Sche[i, j, k] = 0.5e0 * (Hz[i, j, k] + Hz[i, j-1, k]) * dm_v * (
+                             (P_Sche[i, j-1, k] - P_Sche[i, j, k]) - HalfGRho * (
+                               (rhol[i, j, k] + rhol[i, j-1, k]) * (z_r[i, j, k] - z_r[i, j-1, k]) - 0.2e0 * (
+                                 (dRx[i, j, k] - dRx[i, j-1, k]) * (z_r[i, j, k] - z_r[i, j-1, k] - (1e0 / 12e0) * (dZx[i, j, k] + dZx[i, j-1, k]))
+                                 -
+                                 (dZx[i, j, k] - dZx[i, j-1, k]) * (rhol[i, j, k] - rhol[i, j-1, k] - (1e0 / 12e0) * (dRx[i, j, k] + dRx[i, j-1, k]))
+                               )
+                             )
+                           )
+  end
+end
+
+# nondimensionalization (whole arrays, as in ru_Sche .*= -adim_Sche)
+@kernel function k_rpSche_scale!(ru_Sche, rv_Sche, fac, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    ru_Sche[i, j, k] *= fac
+    rv_Sche[i, j, k] *= fac
+  end
+end
+
+# ru2_Sche, rv2_Sche: shift by one point and boundary conditions (-999 where not defined)
+@kernel function k_rpSche_shift!(ru2_Sche, rv2_Sche, ru_Sche, rv_Sche, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    if (i == 0 || i == NI)
+      ru2_Sche[i, j, k] = ru_Sche[1, j, k]
+    elseif (1 <= i <= NI-1 && 1 <= j <= NJ)
+      ru2_Sche[i, j, k] = ru_Sche[i+1, j, k]
+    else
+      ru2_Sche[i, j, k] = -999e0
+    end
+    if (j == 0 || j == NJ)
+      rv2_Sche[i, j, k] = 0e0
+    elseif (1 <= j <= NJ-1 && 1 <= i <= NI)
+      rv2_Sche[i, j, k] = rv_Sche[i, j+1, k]
+    else
+      rv2_Sche[i, j, k] = -999e0
+    end
+  end
+end
+
+# drpx, drpy from grpifc, grpjfc (the same relation as in the Song scheme)
+@kernel function k_rpSche_drp!(ru3_Sche, rv3_Sche, ru4_Sche, rv4_Sche, ru2_Sche, rv2_Sche, gi, gj, ux, uy, vx, vy, lo)
+  i, j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    local ru3 = 0.5e0 * (ru2_Sche[i, j, k] / gi[i, j, k, 1] + ru2_Sche[i-1, j, k] / gi[i-1, j, k, 1])
+    local rv3 = 0.5e0 * (rv2_Sche[i, j, k] / gj[i, j, k, 2] + rv2_Sche[i, j-1, k] / gj[i, j-1, k, 2])
+    ru3_Sche[i, j, k] = ru3
+    rv3_Sche[i, j, k] = rv3
+    ru4_Sche[i, j, k] = (ru3 * ux[i, j] + rv3 * vx[i, j])
+    rv4_Sche[i, j, k] = (ru3 * uy[i, j] + rv3 * vy[i, j])
+  end
+end
+
+function rpevalgrad_Sche(nl::Int, S=DEV)
+  local dZ = work(S, :rpevalgrad_Sche_dZ, rc_kind, 0:NI, 0:NJ, 0:NK)
+  local dR = work(S, :rpevalgrad_Sche_dR, rc_kind, 0:NI, 0:NJ, 0:NK)
+  local FC = work(S, :rpevalgrad_Sche_FC, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
+  local dZx = work(S, :rpevalgrad_Sche_dZx, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
+  local dRx = work(S, :rpevalgrad_Sche_dRx, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
+  local rx = work(S, :rpevalgrad_Sche_rx, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
+  local rhol = work(S, :rpevalgrad_Sche_rhol, rc_kind, 0:NI+1, 0:NJ+1, 0:NK+1)
+  local z_r = work(S, :rpevalgrad_Sche_z_r, rc_kind, 0:NI+1, 0:NJ+1, 0:NK+1)
+  local Hz = work(S, :rpevalgrad_Sche_Hz, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
+  local z_w = work(S, :rpevalgrad_Sche_z_w, rc_kind, 0:NI+1, 0:NJ+1, -1:NK+1)
+  local P_Sche = work(S, :rpevalgrad_Sche_P_Sche, rc_kind, 0:NI+1, 0:NJ+1, 1:NK)
 
   local epsil = 0e0
 
-
-  # ====================================================================================h
-  #
+  # ====================================================================================
   # -----------------------------------------------------------------
   # Part I: The variables of PSOM are translated into ROMS variables.
   # -----------------------------------------------------------------
-  #
-  #
-  # --------
-  # Indices
-
-  local imin = 1
-  local imax = NI
-
-  local jmin = 1
-  local jmax = NJ
-
-  local N = NK
-
-  local istrU = imin
-  local iend = imax
-  local jstrV = jmin
-  local jend = jmax
-  local istr = imin
-  local jstr = jmin
 
   # --------
   # Geometry
-
-  dn_u .= dx
-  dm_v .= dy
-
-  @views @. z_r = DL * zc
-  @views @. z_w = DL * zf
-
-  for k in 1:NK
-    Hz[0:NI+1, 0:NJ+1, k] = (z_w[:, :, k] .- z_w[:, :, k-1])
-  end
+  local dn_u = dx
+  local dm_v = dy
 
   # ----------
   # Geophysics
-
   local g = gpr * 10e0
   local rho0 = R0
 
-  evalrho(rho, nl, HOST)
-  rhol .= rho .- rho0
+  evalrho(S.rho, nl, S)
 
-  # ------------------------
-  # Boundary condition in x:
+  launch!(S, k_rpSche_geom!, (0:NI+1, 0:NJ+1, 0:NK+1), z_r, z_w, Hz, rhol, S.zc, S.zf, S.rho, rho0)
 
-  Hz[0, :, :] = Hz[NI, :, :]
-  Hz[NI+1, :, :] = Hz[1, :, :]
-
-  rhol[0, :, :] = rhol[NI, :, :]
-  rhol[NI+1, :, :] = rhol[1, :, :]
-
-
-
-  # ====================================================================================h
-
+  # ====================================================================================
   # -----------------------------------------------------------------
   # Part II: The code.
   # -----------------------------------------------------------------
   # The cpp tests have been removes.
   # Except from explicitely designed ligns, nothing has been changed.
 
-  #
-  # Preliminary step (same for XI- and ETA-components):
-  #------------ ---- ----- --- --- --- ----------------
-  #
-
   local GRho = g / rho0
   local HalfGRho = 0.5e0 * GRho
 
-  for j in jstrV-1:jend
-    for k in 1:N-1
-      for i in istrU-1:iend
-        dZ[i, k] = z_r[i, j, k+1] - z_r[i, j, k]
-        dR[i, k] = rhol[i, j, k+1] - rhol[i, j, k]
-      end
-    end
-    for i in istrU-1:iend
-      dR[i, N] = dR[i, N-1]
-      dR[i, 0] = dR[i, 1]
-      dZ[i, N] = dZ[i, N-1]
-      dZ[i, 0] = dZ[i, 1]
-    end
-    for k in N:-1:1
-      for i in istrU-1:iend
-        local cff = 2e0 * dZ[i, k] * dZ[i, k-1]
-        dZ[i, k] = cff / (dZ[i, k] + dZ[i, k-1])
+  launch!(S, k_rpSche_P!, (0:NI, 0:NJ), P_Sche, dZ, dR, z_r, z_w, rhol, epsil, g, GRho, HalfGRho)
 
-        local cfr = 2e0 * dR[i, k] * dR[i, k-1]
-        if (cfr > epsil)
-          dR[i, k] = cfr / (dR[i, k] + dR[i, k-1])
-        else
-          dR[i, k] = 0e0
-        end
-      end
-    end
-    for i in istrU-1:iend
-      P_Sche[i, j, N] = 0e0 * g * z_w[i, j, N] + GRho * (rhol[i, j, N] + 0.5 * (rhol[i, j, N] - rhol[i, j, N-1]) * (z_w[i, j, N] - z_r[i, j, N]) / (z_r[i, j, N] - z_r[i, j, N-1])) * (z_w[i, j, N] - z_r[i, j, N])
-    end
-    for k in N-1:-1:1
-      for i in istrU-1:iend
-        P_Sche[i, j, k] = P_Sche[i, j, k+1] + HalfGRho * ((rhol[i, j, k+1] + rhol[i, j, k]) * (z_r[i, j, k+1] - z_r[i, j, k])
-                                                                  -
-                                                                  0.2e0 * ((dR[i, k+1] - dR[i, k]) * (z_r[i, j, k+1] - z_r[i, j, k] - (1e0 / 12e0) * (dZ[i, k+1] + dZ[i, k]))
-                                                                           -
-                                                                           (dZ[i, k+1] - dZ[i, k]) * (rhol[i, j, k+1] - rhol[i, j, k] - (1e0 / 12e0) * (dR[i, k+1] + dR[i, k]))))
-      end
-    end
-  end
-
-
-  # Caution:
-  # The line P_Sche(i,j,N)=... has been modified !
-  # The term g*z_w(i,j,N) has been set to 0 because PSOM only requires the baroclinic terms and not 
-  #  the barotropic part linked with surface elevation (g.R0.h).
-  #
-
-
-  #
   # Compute XI-component of pressure gradient term:
-  #-------- ------------ -- -------- -------- -----
-  #
-  for k in N:-1:1
-    for j in jstr:jend
-      for i in imin:imax
-        FC[i, j] = z_r[i, j, k] - z_r[i-1, j, k]
-        rx[i, j] = rhol[i, j, k] - rhol[i-1, j, k]
-      end
-    end
+  launch!(S, k_rpSche_xi_fc!, (0:NI+1, 1:NJ, 1:NK), FC, rx, z_r, rhol)
+  launch!(S, k_rpSche_xi_d!, (0:NI, 1:NJ, 1:NK), dZx, dRx, FC, rx, epsil)
+  launch!(S, k_rpSche_ru!, (1:NI, 1:NJ, 1:NK), S.ru_Sche, Hz, P_Sche, rhol, z_r, dZx, dRx, dn_u, HalfGRho)
 
-    # This part has been included to take into account the boundary conditions:
-    #++++ Added by JBG, 20120425.
-    @. @views FC[0, :] = FC[NI, :]
-    @. @views FC[1, :] = z_r[1, :, k] - z_r[NI, :, k]
-    @. @views rx[0, :] = rx[NI, :]
-    @. @views rx[1, :] = rhol[1, :, k] - rhol[NI, :, k]
-    @. @views FC[NI+1, :] = FC[1, :]
-    @. @views rx[NI+1, :] = rx[1, :]
+  # ETA-component of pressure gradient term:
+  launch!(S, k_rpSche_eta_fc!, (1:NI, 0:NJ+1, 1:NK), FC, rx, z_r, rhol)
+  launch!(S, k_rpSche_eta_d!, (1:NI, 0:NJ, 1:NK), dZx, dRx, FC, rx, epsil)
+  launch!(S, k_rpSche_rv!, (1:NI, 1:NJ, 1:NK), S.rv_Sche, Hz, P_Sche, rhol, z_r, dZx, dRx, dm_v, HalfGRho)
 
-    for j in jstr:jend
-      for i in istrU-1:iend
-        local cff = 2e0 * FC[i, j] * FC[i+1, j]
-        if (cff > epsil)
-          dZx[i, j] = cff / (FC[i, j] + FC[i+1, j])
-        else
-          dZx[i, j] = 0e0
-        end
-
-        local cfr = 2e0 * rx[i, j] * rx[i+1, j]
-        if (cfr > epsil)
-          dRx[i, j] = cfr / (rx[i, j] + rx[i+1, j])
-        else
-          dRx[i, j] = 0e0
-        end
-      end
-
-      for i in istrU:iend
-        ru_Sche[i, j, k] = 0.5e0 * (Hz[i, j, k] + Hz[i-1, j, k]) * dn_u[i, j] * (
-                                 (P_Sche[i-1, j, k] - P_Sche[i, j, k]) - HalfGRho * (
-                                   (rhol[i, j, k] + rhol[i-1, j, k]) * (z_r[i, j, k] - z_r[i-1, j, k])
-                                   -
-                                   0.2e0 * ((dRx[i, j] - dRx[i-1, j]) * (z_r[i, j, k] - z_r[i-1, j, k]
-                                                                             -
-                                                                             (1e0 / 12e0) * (dZx[i, j] + dZx[i-1, j]))
-                                            -
-                                            (dZx[i, j] - dZx[i-1, j]) * (rhol[i, j, k] - rhol[i-1, j, k]
-                                                                             -
-                                                                             (1e0 / 12e0) * (dRx[i, j] + dRx[i-1, j]))
-                                   )
-                                 )
-                               )
-      end
-    end
-
-    #
-    # ETA-component of pressure gradient term:
-    #-------------- -- -------- -------- -----
-    #
-
-
-    for j in jmin:jend
-      for i in istr:iend
-        FC[i, j] = (z_r[i, j, k] - z_r[i, j-1, k])
-        rx[i, j] = (rhol[i, j, k] - rhol[i, j-1, k])
-      end
-    end
-
-    # This part has been altered to take into account the boundary conditions:
-    #++++ Modified by JBG, 20120425
-
-    for i in istr:iend
-      FC[i, jmin] = FC[i, jmin+1]
-      FC[i, jmin-1] = FC[i, jmin]
-      rx[i, jmin] = rx[i, jmin+1]
-      rx[i, jmin-1] = rx[i, jmin]
-    end
-
-    for i in istr:iend
-      FC[i, jmax] = FC[i, jmax-1]
-      FC[i, jmax+1] = FC[i, jmax]
-      rx[i, jmax] = rx[i, jmax-1]
-      rx[i, jmax+1] = rx[i, jmax-1]
-    end
-
-
-    for j in jstrV-1:jend
-      for i in istr:iend
-        local cff = 2e0 * FC[i, j] * FC[i, j+1]
-        if (cff > epsil)
-          dZx[i, j] = cff / (FC[i, j] + FC[i, j+1])
-        else
-          dZx[i, j] = 0e0
-        end
-
-        local cfr = 2e0 * rx[i, j] * rx[i, j+1]
-        if (cfr > epsil)
-          dRx[i, j] = cfr / (rx[i, j] + rx[i, j+1])
-        else
-          dRx[i, j] = 0e0
-        end
-      end
-
-      if (j >= jstrV)
-        for i in istr:iend
-          rv_Sche[i, j, k] = 0.5e0 * (Hz[i, j, k] + Hz[i, j-1, k]) * dm_v[i, j] * (
-                                   (P_Sche[i, j-1, k] - P_Sche[i, j, k]) - HalfGRho * (
-                                     (rhol[i, j, k] + rhol[i, j-1, k]) * (z_r[i, j, k] - z_r[i, j-1, k]) - 0.2e0 * (
-                                       (dRx[i, j] - dRx[i, j-1]) * (z_r[i, j, k] - z_r[i, j-1, k] - (1e0 / 12e0) * (dZx[i, j] + dZx[i, j-1]))
-                                       -
-                                       (dZx[i, j] - dZx[i, j-1]) * (rhol[i, j, k] - rhol[i, j-1, k] - (1e0 / 12e0) * (dRx[i, j] + dRx[i, j-1]))
-                                     )
-                                   )
-                                 )
-        end
-      end
-    end
-
-  end
-
-
-
-  # ====================================================================================h
-
+  # ====================================================================================
   # -----------------------------------------------------------------
   # Part III: The variables of ROMS are now translated into PSOM variables.
   # -----------------------------------------------------------------
 
   #--------------------------------
-  # ru_Sche and rv_Sche are the equivalent to grpifc and grpjfc but 
+  # ru_Sche and rv_Sche are the equivalent to grpifc and grpjfc but
   # - are dimensionalized
   # - have a shift of one grid point.
   # - the boundary conditions will have to be prescribed.
 
-
   #-----------------------
   #- nondimensionalization
-
   local adim_Sche = 1e0 / (P1 / R0 * dx * dy)
-  ru_Sche .*= -adim_Sche
-  rv_Sche .*= -adim_Sche
+  launch!(S, k_rpSche_scale!, (0:NI+1, 0:NJ+1, 1:NK), S.ru_Sche, S.rv_Sche, -adim_Sche)
 
-  ru2_Sche .= -999e0
-  rv2_Sche .= -999e0
-
-  for k in 1:NK
-    for j in 1:NJ
-      for i in 1:NI-1
-        ru2_Sche[i, j, k] = ru_Sche[i+1, j, k]
-      end
-    end
-  end
-  for k in 1:NK
-    for j in 1:NJ-1
-      for i in 1:NI
-        rv2_Sche[i, j, k] = rv_Sche[i, j+1, k]
-      end
-    end
-  end
-
-  #-----------------------
-  #- boundary conditions
-
-  ru2_Sche[0, :, :] = ru_Sche[1, :, :]
-  ru2_Sche[NI, :, :] = ru_Sche[1, :, :]
-
-  rv2_Sche[:, 0, :] .= 0e0
-  rv2_Sche[:, NJ, :] .= 0e0
+  #- shift and boundary conditions
+  launch!(S, k_rpSche_shift!, (0:NI+1, 0:NJ+1, 1:NK), S.ru2_Sche, S.rv2_Sche, S.ru_Sche, S.rv_Sche)
 
   #--------------------------------
   # ru2_Sche and rv2_Sche are now totally equivalent to grpifc and grpjfc.
   # Now, we have to compute drpx and drpy.
   # The relation between grpifc/grpjfc and drpx/drpy is exactly the same as the one in the Song scheme.
-
-
-
-  for k in 1:NK
-    for j in 1:NJ
-      for i in 1:NI
-        ru3_Sche[i, j, k] = 0.5e0 * (ru2_Sche[i, j, k] / gi[i, j, k, 1] + ru2_Sche[i-1, j, k] / gi[i-1, j, k, 1])
-      end
-    end
-  end
-
-  for k in 1:NK
-    for j in 1:NJ
-      for i in 1:NI
-        rv3_Sche[i, j, k] = 0.5e0 * (rv2_Sche[i, j, k] / gj[i, j, k, 2] + rv2_Sche[i, j-1, k] / gj[i, j-1, k, 2])
-      end
-    end
-  end
-
-  for k in 1:NK
-    for j in 1:NJ
-      for i in 1:NI
-        ru4_Sche[i, j, k] = (ru3_Sche[i, j, k] * ux[i, j] + rv3_Sche[i, j, k] * vx[i, j])
-      end
-    end
-  end
-
-  for k in 1:NK
-    for j in 1:NJ
-      for i in 1:NI
-        rv4_Sche[i, j, k] = (ru3_Sche[i, j, k] * uy[i, j] + rv3_Sche[i, j, k] * vy[i, j])
-      end
-    end
-  end
-
-
+  launch!(S, k_rpSche_drp!, (1:NI, 1:NJ, 1:NK), S.ru3_Sche, S.rv3_Sche, S.ru4_Sche, S.rv4_Sche,
+          S.ru2_Sche, S.rv2_Sche, S.gi, S.gj, S.ux, S.uy, S.vx, S.vy)
 
   #---------------------------------
   # ru2_Sche and rv2_Sche are the grpifc and grpjfc
   # ru4_Sche and rv4_Sche are the drpx and drpy
   #---------------------------------
-
-
-  #---------------------------------
-  # _ End of the code.
   #---------------------------------
 
 
@@ -399,6 +318,7 @@ function rpevalgrad_Sche(nl::Int)
   #                                                                                                        
   # (Eq. P.1, P.2 and R.1) In the end, the addition of all these terms gives:         -54.276     -54.285    -54.285   -54.285     ...
   #---------------------------------
+
 
 
 

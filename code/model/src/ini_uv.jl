@@ -21,10 +21,10 @@ function ini_uv(n)
    local kmax = 0
 
    if (use_shchepetkin == 0) # calculates baroclinic press gradients
-      rpevalgrad_Song(n)
+      rpevalgrad_Song(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_song_(Ref(n)::Ref{Int})::Cvoid
    else
-      rpevalgrad_Sche(n)
+      rpevalgrad_Sche(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_sche_(Ref(n)::Ref{Int})::Cvoid
 
       drpx[1:NI, 1:NJ, 1:NK] = ru4_Sche[1:NI, 1:NJ, 1:NK]
@@ -87,7 +87,7 @@ function ini_uv(n)
       srcface_nopy(n)
       #@ccall "./PSOM_LIB.so".srcface_nopy_(Ref(n)::Ref{Int})::Cvoid
 
-      calcfkfc()
+      calcfkfc(HOST)
       #@ccall "./PSOM_LIB.so".calcskfc_()::Cvoid
 
       local fac2 = EPS * lambda

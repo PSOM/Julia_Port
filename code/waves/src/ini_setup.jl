@@ -153,7 +153,7 @@ function ini_setup(pcorr)
 
   #---------------------
 
-  findzall()
+  findzall(HOST)
   #@ccall "./PSOM_LIB.so".findzall_()::Cvoid                                            # finds the vertical grid
 
   ini_st()
@@ -165,7 +165,7 @@ function ini_setup(pcorr)
   ini_h()
   #@ccall "./PSOM_LIB.so".ini_h_()::Cvoid                                               # initialize free surface h
 
-  findzall()
+  findzall(HOST)
   #@ccall "./PSOM_LIB.so".findzall_()::Cvoid                                            # find z again
 
 
