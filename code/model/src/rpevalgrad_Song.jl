@@ -181,7 +181,7 @@ function rpevalgrad_Song(n)
          # Fortran writes Jx2(j,0) here (index typo); the k=0 level is never used, so write the
          # i-indexed entry instead (avoids a BoundsError when NJ > NI)
          Jx2[i, 0] = 0.5e0 * (rho[i, j, k+2] + rho[i+1, j, k+2] - (rho[i, j, k+1] + rho[i+1, j, k+1]))
-         dzsig_x[i, 1] = 0.5e0 * (zc[i, j, k+2] + zc[i+1, j, k+2] - (zc[i, j, k+1] + zc[i+1, j, k+1])) * DL
+         dzsig_x[i, 0] = 0.5e0 * (zc[i, j, k+2] + zc[i+1, j, k+2] - (zc[i, j, k+1] + zc[i+1, j, k+1])) * DL
          for k in 1:NK-1
             Jx2[i, k] = 0.5e0 * (rho[i, j, k+1] + rho[i+1, j, k+1] - (rho[i, j, k] + rho[i+1, j, k]))
             dzsig_x[i, k] = 0.5e0 * (zc[i, j, k+1] + zc[i+1, j, k+1] - (zc[i, j, k] + zc[i+1, j, k])) * DL
@@ -192,7 +192,7 @@ function rpevalgrad_Song(n)
       local i = NI
       local k = 0
       Jx2[i, 0] = 0.5e0 * (rho[i, j, k+2] + rho[1, j, k+2] - (rho[i, j, k+1] + rho[1, j, k+1]))   # see note above
-      dzsig_x[i, 1] = 0.5e0 * (zc[i, j, k+2] + zc[1, j, k+2] - (zc[i, j, k+1] + zc[1, j, k+1])) * DL
+      dzsig_x[i, 0] = 0.5e0 * (zc[i, j, k+2] + zc[1, j, k+2] - (zc[i, j, k+1] + zc[1, j, k+1])) * DL
       for k in 1:NK-1
          Jx2[i, k] = 0.5e0 * (rho[i, j, k+1] + rho[1, j, k+1] - (rho[i, j, k] + rho[1, j, k]))
          dzsig_x[i, k] = 0.5e0 * (zc[i, j, k+1] + zc[1, j, k+1] - (zc[i, j, k] + zc[1, j, k])) * DL
