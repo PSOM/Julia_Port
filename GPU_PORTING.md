@@ -14,9 +14,12 @@ The Julia model runs on the CPU or on a GPU from one source, using
     mixed, and the results must stay **bit-identical** to the pre-port code.
   - On a GPU, `DEV` holds device copies. `to_device!()` runs at the end of `initialize()`, and `to_host!()`
     runs before output.
-- Backend: environment variable `PSOM_BACKEND` = `cpu` (default) | `jlarray` | `cuda` | `amdgpu`.
-  `jlarray` (JLArrays.jl) emulates a GPU array on the CPU and **forbids scalar indexing**, so it tests the
-  GPU code path without a GPU.
+- Backend: environment variable `PSOM_BACKEND`.
+  - `cpu` (default), `cuda`, `amdgpu`.
+  - For testing without a GPU:
+    - `jlarray` (JLArrays.jl) emulates a GPU array on the CPU and **forbids scalar indexing**.
+    - `opencl` (OpenCL.jl + pocl) compiles the kernels with the GPU compiler stack (SPIR-V) and runs them
+      on the CPU, which checks that every kernel compiles for a GPU.
 
 ## How a routine is ported
 
@@ -87,8 +90,61 @@ The Julia model runs on the CPU or on a GPU from one source, using
   every step's full state with the saved pre-port baseline (expected **0.000e+00**) and with the Fortran
   reference (expected round-off, ~1e-10 or less; `hxn` in waves ~1e-7 is noise, see CHANGES.md). Takes
   about 6 minutes for all four cases.
-- `PSOM_BACKEND=jlarray validation/regress.sh check wiggle` runs on the emulated GPU array. This only works
-  once every routine called in the time step is ported.
+- `PSOM_BACKEND=jlarray validation/regress.sh check` must also give 0.000e+00. `PSOM_BACKEND=opencl` gives
+  round-off differences (the GPU-style compilation fuses multiply-adds).
+- `validation/backend_check.sh <backend>` compares any backend with the CPU directly (no Fortran needed).
 - `julia validation/check_kernels.jl` lists kernel bodies that use globals they must not use (see 2.). It does
   not look inside ordinary functions called from kernels (such as `potdens`, `dgtsl`): those must also use
   only their arguments and constants.
+
+## Running on a GPU server
+
+The code needs nothing machine-specific beyond the GPU package for the vendor.
+
+1. Install Julia (user space is fine): `curl -fsSL https://install.julialang.org | sh`
+   (or `module load julia` if the cluster provides ≥ 1.10). Copy or clone `Julia_Port`.
+2. Add the GPU package to the validation environment, on a node with the GPU:
+   ```bash
+   cd Julia_Port/validation
+   julia --project=. -e 'using Pkg; Pkg.add("CUDA"); Pkg.instantiate(); using CUDA; CUDA.versioninfo()'
+   #   AMD:  Pkg.add("AMDGPU") instead of CUDA
+   ```
+   Without internet on the compute nodes, run this on a login node; the packages go to `~/.julia`.
+3. Correctness, GPU against CPU (no Fortran needed; ~10 min):
+   ```bash
+   validation/backend_check.sh cuda            # or: amdgpu; cases: wiggle sche hydro waves
+   ```
+   Expected: round-off differences (≲1e-10 relative; `hxn` in waves ~1e-7, a noise-only field).
+4. Speed for a range of grid sizes (waves; edit `SIZES` in the script for your grids):
+   ```bash
+   validation/gpu_bench.sh cuda 10             # -> validation/runs/gpu_bench_cuda.txt
+   validation/gpu_bench.sh cpu 10 8            # CPU reference with 8 threads, same node
+   ```
+   Memory is roughly 1 kB per grid cell (≈ 5 GB at 4.7M cells).
+5. A production run: build the experiment as usual (`code/tools/compile_julia.sh <exp>`), then
+   ```bash
+   cd code/exe/nh_<exp> && PSOM_BACKEND=cuda JULIA_PROJECT=../../../validation julia src/main.jl <namelist.yml>
+   ```
+   Output and pickups are written from host copies made only on output steps (`out1d_int`, `out2d_int`,
+   `out3d_int`, `pickup_int`), so frequent output costs GPU→CPU copies.
+
+Example SLURM job (adapt partition and account):
+```bash
+#!/bin/bash
+#SBATCH --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=01:00:00
+cd $SLURM_SUBMIT_DIR/Julia_Port
+validation/backend_check.sh cuda wiggle waves
+validation/gpu_bench.sh cuda 10
+```
+
+What is still CPU-like in the GPU code (expected bottlenecks, to profile on the GPU):
+- **The free-surface solver.** `hsolve` (100 SOR iterations, never converging to its 1e-12 tolerance) and
+  `mprove` (100–450 iterations) each do a residual reduction with a host sync every iteration.
+- **Sequential boundary sweeps**, kept to reproduce the Fortran exactly:
+  - `hfill` ghost rows: 1 work item per row, 3 calls per `hsolve` iteration.
+  - `mgpfill` faces: one-workgroup wavefronts.
+  - The coarsest-level `sor`: a one-workgroup wavefront.
+- **Many small launches**, e.g. `efill` (8 per call) and the colour sweeps.
+
+Changing these alters results at the solver-tolerance level, so they are left for after the first GPU
+measurements.
