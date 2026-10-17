@@ -131,5 +131,7 @@ dfill!(S, A, x, ranges...) = launch!(S, k_fill!, ranges, A, x)
 dcopy!(S, A, B, ranges...) = launch!(S, k_copy!, ranges, A, B)
 "A[ranges...] .+= B[ranges...]"
 daddto!(S, A, B, ranges...) = launch!(S, k_addto!, ranges, A, B)
+"copy the whole array B into A (same shape and offsets)"
+dcopy!(A::AbstractArray, B::AbstractArray) = (_copy!(A, B); nothing)
 "fill the whole array A (all its indices, including halos)"
 dfill!(A::AbstractArray, x) = (fill!(A isa OffsetArray ? parent(A) : A, x); nothing)

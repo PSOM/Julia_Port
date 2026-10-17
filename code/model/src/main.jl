@@ -128,11 +128,11 @@ function initialize()
         end
     end
 
-    diag_energy(step)
-    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
+    diag_energy(step, HOST)
 
-
-    return pcorr, initial_step
+    # the time stepping runs on the device array set DEV (a no-op on the CPU backend)
+    to_device!()
+    return to_dev(pcorr), initial_step
 end
 
 #########################################################
@@ -140,6 +140,10 @@ end
 #########################################################
 
 # One time step (body of the time loop of main.f90)
+"true if any output (1-D/2-D/3-D fields or pickup) is written at this step"
+is_output_step(step) = mod(step, out1d_int) == 0 || mod(step, out2d_int) == 0 ||
+                       mod(step, out3d_int) == 0 || mod(step, pickup_int) == 0
+
 function step!(pcorr, step)
     global time_nondim = dtf * step
     @fortSet("time_nondim", time_nondim, rc_kind)
@@ -163,20 +167,25 @@ function step!(pcorr, step)
         end
     end
 
-    diag_n2()
-    #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
+    on_cpu && diag_n2()      # diagnostics only; on a GPU computed on output steps, below
 
     #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
     momentum(pcorr, step)
 
 
-    diag_n2budget(step)
-    #@ccall "./PSOM_LIB.so".diag_n2budget_(Ref(step)::Ptr{Int})::Cvoid
+    if on_cpu
+        diag_n2budget(step)
+    elseif is_output_step(step)
+        # GPU: copy the state back for output, and compute the diagnostics that only the output
+        # uses (they depend only on the current state, so computing them every step changes nothing)
+        to_host!()
+        diag_n2()
+        diag_n2budget(step)
+    end
 
     diag_energy(step)
-    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
 
-    global hmean = meanh(NI, NJ, h)
+    global hmean = meanh_dev()
     @fortSet("hmean", hmean, rc_kind)
     #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
 

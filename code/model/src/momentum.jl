@@ -2,9 +2,8 @@ using .fortVar
 
 
 function momentum(pcorr, step)
-    oldh .= h
-
-    rho_old .= rho
+    dcopy!(DEV.oldh, DEV.h)
+    dcopy!(DEV.rho_old, DEV.rho)
     
     local dtim::Ref{rc_kind} = Ref(0e0)
     local cfcdiv::Ref{rc_kind} = Ref(0e0)
@@ -95,7 +94,7 @@ function momentum(pcorr, step)
     conadjust(step, 0)
     #@ccall "./PSOM_LIB.so".conadjust_(Ref(step)::Ref{Int}, Ref(0)::Ref{Int})::Cvoid
 
-    diag_n2()
-    #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
+    # diagnostics only (freqN2, ...); on a GPU they are computed on output steps (see step!)
+    on_cpu && diag_n2()
 end
 
