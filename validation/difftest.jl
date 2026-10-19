@@ -324,6 +324,24 @@ function unit_hsolve(dtim)
     mprove(hJ, chJ, rhsJ, dtim, HOST); DT.fcall(ctx, "mprove", hF, chJ, rhsJ, DT.R(dtim))
     cmpreport("  unit mprove", ("h", parent(hJ), hF))
 end
+"unit test of conadjust on a state made statically unstable in every other column, with a tracer that
+varies in i, j and k (the short test runs never convect); the Julia state is restored afterwards"
+function unit_conadjust(step)
+    saved = [(x, copy(x)) for x in (s, T, rho, Tr, conv, con100)]
+    for j in 1:NJ, i in 1:NI, k in 1:NK
+        isodd(i + j) && (rho[i, j, k] -= 1e-2 * (NK - k))
+        for it in 1:ntr
+            Tr[it, i, j, k, 0] = k + 0.1 * i + 0.01 * j + it
+        end
+    end
+    ds = substep("  unit conadjust (unstable)", () -> conadjust(step, 0), () -> DT.fcall(ctx, "conadjust", DT.I(step), DT.I(0)))
+    say("    columns convecting: ", count(==(1), conv), " cells with conv = 1")
+    for (x, c) in saved
+        copyto!(x, c)
+    end
+    ds
+end
+
 "Fortran header array as a Julia array with the same axes as the mapped Julia global (aliases Fortran memory)"
 function fwrap(name)
     v = ctx.vars[findfirst(v -> v.name == name, ctx.vars)]
@@ -417,6 +435,7 @@ for step in 1:nsteps_test
         substep("s$step diag_n2", () -> diag_n2(), () -> DT.fcall(ctx, "diag_n2"))
         substep("s$step sponge", () -> sponge(0, dtf), () -> DT.fcall(ctx, "sponge", DT.I(0), DT.R(dtf)))
     else
+        mode == "synced" && unit_conadjust(step)
         substep("s$step conadjust", () -> conadjust(step, 0), () -> DT.fcall(ctx, "conadjust", DT.I(step), DT.I(0)))
         substep("s$step diag_n2", () -> diag_n2(), () -> DT.fcall(ctx, "diag_n2"))
     end
