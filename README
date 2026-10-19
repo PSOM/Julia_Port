@@ -14,6 +14,18 @@ This new version implements some of the changes developed sing PSOMv0.63, which 
 
 
 *********************
+* JULIA PORT: STATUS AND DOCUMENTATION (2026)
+
+The Julia port in code/ reproduces the Fortran model to round-off (wiggle, waves) and runs on CPUs and
+GPUs from one source (KernelAbstractions.jl; PSOM_BACKEND=cpu|cuda|amdgpu). See:
+- CHANGES.md      what was changed, why, and how it affects the model output
+- VALIDATION.md   how the Julia port was compared with the Fortran, and the results
+- GPU_PORTING.md  GPU design, porting rules, and how to run on a GPU server
+- PLAN.md         work plan
+- TODO.md         what is left to finish the GPU port
+
+
+*********************
 * GENERAL DESCRIPTION
 
 PSOM, pronounced "soam" (the nectar derived from the churning of the oceans in Indian mythology), stands for Process Study Ocean Model. 

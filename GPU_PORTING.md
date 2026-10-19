@@ -125,6 +125,12 @@ The code needs nothing machine-specific beyond the GPU package for the vendor.
    ```bash
    cd code/exe/nh_<exp> && PSOM_BACKEND=cuda JULIA_PROJECT=../../../validation julia src/main.jl <namelist.yml>
    ```
+   or, equivalently, `PSOM_BACKEND=cuda code/exe/julia_launch.sh nh_<exp> <namelist.yml>` (GET_STARTED_1),
+   which uses the validation environment unless `JULIA_PROJECT` is set. That environment pins the package
+   versions everything was tested with (KernelAbstractions 0.9.45). In another environment the model installs
+   OffsetArrays, NetCDF, YAML, KernelAbstractions and Adapt on first use (CUDA/AMDGPU must be added by hand),
+   at their latest versions: with KernelAbstractions 0.10.1 wiggle runs and agrees to round-off, but that
+   version has not been validated further.
    Output and pickups are written from host copies made only on output steps (`out1d_int`, `out2d_int`,
    `out3d_int`, `pickup_int`), so frequent output costs GPU→CPU copies.
 
