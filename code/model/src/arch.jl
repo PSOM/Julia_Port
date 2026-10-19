@@ -23,6 +23,12 @@ const KA = KernelAbstractions
 using Adapt
 
 const PSOM_BACKEND = get(ENV, "PSOM_BACKEND", "cpu")
+for (be, pkg) in (("cuda", "CUDA"), ("amdgpu", "AMDGPU"), ("opencl", "OpenCL"), ("jlarray", "JLArrays"))
+    if PSOM_BACKEND == be && Base.find_package(pkg) === nothing
+        error("PSOM_BACKEND=$be needs the Julia package $pkg: julia -e 'using Pkg; Pkg.add(\"$pkg\")'" *
+              (be == "opencl" ? " (and pocl_jll)" : ""))
+    end
+end
 @static if PSOM_BACKEND == "cuda"
     using CUDA
     const backend = CUDABackend()

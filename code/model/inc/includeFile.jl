@@ -14,6 +14,13 @@ if (!@isdefined(INCLUDE_All))
         Pkg.add("YAML")
     end
     using YAML
+    # CPU/GPU kernels (arch.jl). A GPU backend also needs CUDA.jl or AMDGPU.jl (see GPU_PORTING.md).
+    if (Base.find_package("KernelAbstractions") === nothing)
+        Pkg.add("KernelAbstractions")
+    end
+    if (Base.find_package("Adapt") === nothing)
+        Pkg.add("Adapt")
+    end
 
     include("../inc/fortVar.jl")
     
