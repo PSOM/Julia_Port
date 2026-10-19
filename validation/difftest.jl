@@ -427,7 +427,8 @@ for step in 1:nsteps_test
         end
         fJ = Ref(0e0); fF = DT.R(0)
         substep(t * "facediv", () -> (fJ[] = facediv(dtim); push!(extras, ("fdiv", fJ, fF))), F("facediv", DT.R(dtim), fF))
-        substep(t * "cdiv", () -> cdiv(dtim, ivf), F("cdiv", DT.R(dtim), DT.R(0), DT.I(ivf)))
+        dJ = Ref(0e0); dF = DT.R(0)
+        substep(t * "cdiv", () -> (dJ[] = cdiv(dtim, ivf); push!(extras, ("ctrdiv", dJ, dF))), F("cdiv", DT.R(dtim), dF, DT.I(ivf)))
     end
     substep("s$step evalrho", () -> evalrho(rho, 0), () -> DT.fcall(ctx, "evalrho", ptr("rho"), DT.I(0)))
     # experiment-specific end of momentum (see code/<exp>/src/momentum.f90)
