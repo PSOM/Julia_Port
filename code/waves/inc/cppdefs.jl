@@ -13,6 +13,9 @@ const file_output_bin=false
 const gotm_call=false
 const  implicit=false
 const parallel=true
-const gotm_im=true
+# gotm_im selects the implicit vertical-mixing branch in waves/src/advection_and_mixing.
+# The Fortran tests "#ifdef gotm_imp", which waves/inc/cppdefs.h never defines, so the Fortran
+# waves runs the explicit branch. Set to false to match it.
+const gotm_im=false
 
 end

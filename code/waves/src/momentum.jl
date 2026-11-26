@@ -2,9 +2,8 @@ using .fortVar
 
 
 function momentum(pcorr, step)
-    oldh .= h
-
-    rho_old .= rho
+    dcopy!(DEV.oldh, DEV.h)
+    dcopy!(DEV.rho_old, DEV.rho)
     
     local dtim::Ref{rc_kind} = Ref(0e0)
     local cfcdiv::Ref{rc_kind} = Ref(0e0)
@@ -39,13 +38,10 @@ function momentum(pcorr, step)
             
             rpevalgrad_Sche(ivf[])
             #@ccall "./PSOM_LIB.so".rpevalgrad_sche_(ivf::Ref{Int})::Cvoid
-            @. @views drpx[1:NI, 1:NJ, 1:NK] = ru4_Sche[1:NI, 1:NJ, 1:NK]
-
-            @. @views drpy[1:NI, 1:NJ, 1:NK] = rv4_Sche[1:NI, 1:NJ, 1:NK]
-
-            @. @views grpifc[0:NI, 1:NJ, 1:NK] = ru2_Sche[0:NI, 1:NJ, 1:NK]
-
-            @. @views grpjfc[1:NI, 0:NJ, 1:NK] = rv2_Sche[1:NI, 0:NJ, 1:NK]
+            dcopy!(DEV, DEV.drpx, DEV.ru4_Sche, 1:NI, 1:NJ, 1:NK)
+            dcopy!(DEV, DEV.drpy, DEV.rv4_Sche, 1:NI, 1:NJ, 1:NK)
+            dcopy!(DEV, DEV.grpifc, DEV.ru2_Sche, 0:NI, 1:NJ, 1:NK)
+            dcopy!(DEV, DEV.grpjfc, DEV.rv2_Sche, 1:NI, 0:NJ, 1:NK)
         end
         
         coriolis(ivs[])
@@ -54,7 +50,7 @@ function momentum(pcorr, step)
         srcface(ivs[], step)
         #@ccall "./PSOM_LIB.so".srcface_(ivs::Ref{Int}, Ref(step)::Ref{Int})::Cvoid
 
-        hsolve(h, oldh, hdt, dtim[])
+        hsolve(DEV.h, DEV.oldh, DEV.hdt, dtim[])
         #@ccall "./PSOM_LIB.so".hsolve_(@lkGet("h", rc_kind)::Ref{rc_kind}, @lkGet("oldh", rc_kind)::Ref{rc_kind}, @lkGet("hdt", rc_kind)::Ref{rc_kind}, dtim::Ref{rc_kind})::Cvoid
         
         calcfkfc()
@@ -92,15 +88,15 @@ function momentum(pcorr, step)
         #@ccall "./PSOM_LIB.so".cdiv_(dtim::Ref{rc_kind}, ctrdiv::Ref{rc_kind}, ivf::Ref{Int})::Cvoid
 
     end
-    evalrho(rho, 0)
+    evalrho(DEV.rho, 0)
     #@ccall "./PSOM_LIB.so".evalrho_(@lkGet("rho", rc_kind)::Ref{rc_kind}, Ref(0)::Ref{Int})::Cvoid
     
     #conadjust(step, 0)
     #@ccall "./PSOM_LIB.so".conadjust_(Ref(step)::Ref{Int}, Ref(0)::Ref{Int})::Cvoid
 
-    diag_n2()
-    #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
+    # diagnostics only (freqN2, ...); on a GPU they are computed on output steps (see step!)
+    on_cpu && diag_n2()
 
-    sponge(0, dtim)
+    sponge(0, dtim[])   # dtim of the last RK sub-step (= dtf), as in waves/src/momentum.f90
 end
 

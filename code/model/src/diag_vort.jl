@@ -1,3 +1,50 @@
+# Ghost points of u, v, w at time level n: linear extrapolation at j=0, NJ+1 and k=0, NK+1, then the
+# periodic x halo (the first part of vort.f90). It depends only on interior values, so repeating it
+# changes nothing. The next time step reads these ghost points, so it is a part of the dynamics
+# (vort is called every step from diag_n2budget): step! also runs it on the device.
+@kernel function k_uvw_halo_j!(u, v, w, n, lo)
+  i, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    u[i, 0, k, n] = 2.0 * u[i, 1, k, n] - u[i, 2, k, n]
+    v[i, 0, k, n] = 2.0 * v[i, 1, k, n] - v[i, 2, k, n]
+    w[i, 0, k, n] = 2.0 * w[i, 1, k, n] - w[i, 2, k, n]
+
+    u[i, NJ+1, k, n] = 2.0 * u[i, NJ, k, n] - u[i, NJ-1, k, n]
+    v[i, NJ+1, k, n] = 2.0 * v[i, NJ, k, n] - v[i, NJ-1, k, n]
+    w[i, NJ+1, k, n] = 2.0 * w[i, NJ, k, n] - w[i, NJ-1, k, n]
+  end
+end
+@kernel function k_uvw_halo_k!(u, v, w, n, lo)
+  i, j = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    u[i, j, 0, n] = 2.0 * u[i, j, 1, n] - u[i, j, 2, n]
+    v[i, j, 0, n] = 2.0 * v[i, j, 1, n] - v[i, j, 2, n]
+    w[i, j, 0, n] = 2.0 * w[i, j, 1, n] - w[i, j, 2, n]
+
+    u[i, j, NK+1, n] = 2.0 * u[i, j, NK, n] - u[i, j, NK-1, n]
+    v[i, j, NK+1, n] = 2.0 * v[i, j, NK, n] - v[i, j, NK-1, n]
+    w[i, j, NK+1, n] = 2.0 * w[i, j, NK, n] - w[i, j, NK-1, n]
+  end
+end
+@kernel function k_uvw_halo_i!(u, v, w, n, lo)
+  j, k = @index(Global, NTuple) .+ lo
+  @inbounds begin
+    u[0, j, k, n] = u[NI, j, k, n]
+    v[0, j, k, n] = v[NI, j, k, n]
+    w[0, j, k, n] = w[NI, j, k, n]
+
+    u[NI+1, j, k, n] = u[1, j, k, n]
+    v[NI+1, j, k, n] = v[1, j, k, n]
+    w[NI+1, j, k, n] = w[1, j, k, n]
+  end
+end
+
+function uvw_halo!(n, S=DEV)
+  launch!(S, k_uvw_halo_j!, (1:NI, 1:NK), S.u, S.v, S.w, n)
+  launch!(S, k_uvw_halo_k!, (1:NI, 0:NJ+1), S.u, S.v, S.w, n)      # after the j ghosts (reads them)
+  launch!(S, k_uvw_halo_i!, (0:NJ+1, 0:NK+1), S.u, S.v, S.w, n)    # last (copies all ghosts)
+end
+
 function vort(n)
   #  !     ---------------------------------------------------               
   #  USE header,only : NI,NJ,NK,u,v,w,ux,vx,wx,uy,vy,wy,wz,vor,shear,strain,UL,LEN,DL,DLinv,rc_kind
@@ -10,45 +57,7 @@ function vort(n)
   #
   #! ----------------------------------------------------------------------------
   #
-  #  !  j=0,NJ                                                            
-  for i in 1:NI
-    for k in 1:NK
-      u[i, 0, k, n] = 2.0 * u[i, 1, k, n] - u[i, 2, k, n]
-      v[i, 0, k, n] = 2.0 * v[i, 1, k, n] - v[i, 2, k, n]
-      w[i, 0, k, n] = 2.0 * w[i, 1, k, n] - w[i, 2, k, n]
-
-      u[i, NJ+1, k, n] = 2.0 * u[i, NJ, k, n] - u[i, NJ-1, k, n]
-      v[i, NJ+1, k, n] = 2.0 * v[i, NJ, k, n] - v[i, NJ-1, k, n]
-      w[i, NJ+1, k, n] = 2.0 * w[i, NJ, k, n] - w[i, NJ-1, k, n]
-    end
-  end
-
-
-  #  k=0,NK+1                                                            
-  for j in 0:NJ+1
-    for i in 1:NI
-      u[i, j, 0, n] = 2.0 * u[i, j, 1, n] - u[i, j, 2, n]
-      v[i, j, 0, n] = 2.0 * v[i, j, 1, n] - v[i, j, 2, n]
-      w[i, j, 0, n] = 2.0 * w[i, j, 1, n] - w[i, j, 2, n]
-
-      u[i, j, NK+1, n] = 2.0 * u[i, j, NK, n] - u[i, j, NK-1, n]
-      v[i, j, NK+1, n] = 2.0 * v[i, j, NK, n] - v[i, j, NK-1, n]
-      w[i, j, NK+1, n] = 2.0 * w[i, j, NK, n] - w[i, j, NK-1, n]
-    end
-  end
-
-  #     periodic-ew boundaries                                            
-  for k in 0:NK+1
-    for j in 0:NJ+1
-      u[0, j, k, n] = u[NI, j, k, n]
-      v[0, j, k, n] = v[NI, j, k, n]
-      w[0, j, k, n] = w[NI, j, k, n]
-
-      u[NI+1, j, k, n] = u[1, j, k, n]
-      v[NI+1, j, k, n] = v[1, j, k, n]
-      w[NI+1, j, k, n] = w[1, j, k, n]
-    end
-  end
+  uvw_halo!(n, HOST)
 
   # ----------------------------------------------------------------------------
 

@@ -82,6 +82,11 @@ user7 = rc_kind(data["USER"]["user7"])
 user8 = rc_kind(data["USER"]["user8"])
 @fortSet("user8", user8, rc_kind)
 
+# optional DIAG section: mixed-layer depth (m) for the diagnostics, default 10 m
+# (as the Fortran &diag group; experiments whose ini_st sets mldepth override it)
+mldepth = rc_kind(get(get(data, "DIAG", Dict()), "mldepth", 10e0))
+@fortSet("mldepth", mldepth, rc_kind)
+
 
 
 

@@ -270,13 +270,13 @@ global const friction = @fortGetArr("friction", rc_kind, 3)
 global const diabatic = @fortGetArr("diabatic", rc_kind, 3)
 
 
-@static if (cppdefs.implicit)
-    global const mat_A = zeros(rc_kind, (NI, NJ, NK, 5))
-    global const mat_B = zeros(rc_kind, (NI, NJ, NK, 5))
-    global const mat_C = zeros(rc_kind, (NI, NJ, NK, 5))
-    global const mat_D = zeros(rc_kind, (NI, NJ, NK, 5))
-    global const mat_test = zeros(rc_kind, (NI, NJ, NK, 5))
-end
+# Implicit mixing matrices: declared unconditionally in waves/src/header.f90 (mat_D is also filled
+# in the explicit branch of advection_and_mixing)
+global const mat_A = zeros(rc_kind, (NI, NJ, NK, 5))
+global const mat_B = zeros(rc_kind, (NI, NJ, NK, 5))
+global const mat_C = zeros(rc_kind, (NI, NJ, NK, 5))
+global const mat_D = zeros(rc_kind, (NI, NJ, NK, 5))
+global const mat_test = zeros(rc_kind, (NI, NJ, NK, 5))
 
 @static if (cppdefs.allow_particle)
     global parti_file_num::Int = 0

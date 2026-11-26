@@ -11,6 +11,11 @@ fi
 
 namelist="$PWD/$2"
 
+# Julia environment: by default the one the port was validated with (validation/Project.toml and
+# Manifest.toml pin the package versions); set JULIA_PROJECT to use another one.
+export JULIA_PROJECT="${JULIA_PROJECT:-$(cd "$(dirname $0)/../../validation" && pwd)}"
+julia -e 'using Pkg; Pkg.instantiate()' || exit 1
+
 cd "$(dirname $0)/$1"
 echo "$namelist"
 

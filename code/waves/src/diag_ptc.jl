@@ -11,7 +11,7 @@ function diag_ptc(ptc)
 
   #constant=10e0*gpr
 
-  rpevalgrad_Song(0)
+  rpevalgrad_Song(0, HOST)
 
   for k in 1:NK
     for j in 1:NJ

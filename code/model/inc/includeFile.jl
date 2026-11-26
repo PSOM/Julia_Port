@@ -14,11 +14,19 @@ if (!@isdefined(INCLUDE_All))
         Pkg.add("YAML")
     end
     using YAML
+    # CPU/GPU kernels (arch.jl). A GPU backend also needs CUDA.jl or AMDGPU.jl (see GPU_PORTING.md).
+    if (Base.find_package("KernelAbstractions") === nothing)
+        Pkg.add("KernelAbstractions")
+    end
+    if (Base.find_package("Adapt") === nothing)
+        Pkg.add("Adapt")
+    end
 
     include("../inc/fortVar.jl")
     
     include("../inc/cppdefs.jl")
     include("../src/header.jl")
+    include("../src/arch.jl")         # backend selection, device copy D of the header arrays
     include("../src/momentum.jl")
     include("../src/cfdiv.jl")
     include("../src/advection_and_mixing.jl")
@@ -53,6 +61,7 @@ if (!@isdefined(INCLUDE_All))
     include("../src/cpfine.jl")
     include("../src/cpcors.jl")
     include("../src/pbc.jl")
+    include("../src/ran3.jl")
     include("../src/linerelax_periodicew.jl")
     include("../src/dgtsl.jl")
     include("../src/mgpfill.jl")
@@ -100,6 +109,11 @@ if (!@isdefined(INCLUDE_All))
     include("../src/diag_n2budget.jl")
     include("../src/diag_vort.jl")
     include("../src/sigma2z.jl")
+
+    # experiment-specific source files (e.g. waves/inc/includeExtra.jl), copied into inc/ by compile_julia.sh
+    if isfile(joinpath(@__DIR__, "includeExtra.jl"))
+        include("includeExtra.jl")
+    end
     
     
     

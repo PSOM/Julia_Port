@@ -25,6 +25,14 @@ Once you have done that, you simply follow the "compile, run" sequence:
 
     ./exe/julia_launch.sh nh ./namelist.yml
 
+  The model runs on the CPU by default. To run on a GPU, install the Julia package for it once
+  (NVIDIA: julia -e 'using Pkg; Pkg.add("CUDA")'; AMD: "AMDGPU") and set the backend when running:
+
+    PSOM_BACKEND=cuda ./exe/julia_launch.sh nh ./namelist.yml
+
+  See ../GPU_PORTING.md for details. What was changed in the Julia port, and how it was checked against
+  the Fortran, is described in ../CHANGES.md and ../VALIDATION.md.
+
 
 +****************************************************************************************************************************************************
 +      TESTCASES

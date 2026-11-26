@@ -44,6 +44,7 @@ function write_bin(step)
 # Writing pickup files at some frequency
 if (mod(step,pickup_int) == 0) 
   w_pickup(string(dirout,"/op.pickup.",lpad(step, 10, "0"),".cdf"))
+  w_pickup_bin(string(dirout,"/op.pickup.",lpad(step, 10, "0"),".bin"))
 end
 
 end

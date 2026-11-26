@@ -21,10 +21,10 @@ function ini_uv(n)
    local kmax = 0
 
    if (use_shchepetkin == 0) # calculates baroclinic press gradients
-      rpevalgrad_Song(n)
+      rpevalgrad_Song(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_song_(Ref(n)::Ref{Int})::Cvoid
    else
-      rpevalgrad_Sche(n)
+      rpevalgrad_Sche(n, HOST)
       #@ccall "./PSOM_LIB.so".rpevalgrad_sche_(Ref(n)::Ref{Int})::Cvoid
 
       drpx[1:NI, 1:NJ, 1:NK] = ru4_Sche[1:NI, 1:NJ, 1:NK]
@@ -81,13 +81,13 @@ function ini_uv(n)
 
    #     COMPUTE NH PRESSURE                                               
    if (fnhhy > 0.9)
-      coriolis(n)
+      coriolis(n, HOST)
       #@ccall "./PSOM_LIB.so".coriolis_(Ref(n)::Ref{Int})::Cvoid
       
       srcface_nopy(n)
       #@ccall "./PSOM_LIB.so".srcface_nopy_(Ref(n)::Ref{Int})::Cvoid
 
-      calcfkfc()
+      calcfkfc(HOST)
       #@ccall "./PSOM_LIB.so".calcskfc_()::Cvoid
 
       local fac2 = EPS * lambda
@@ -116,7 +116,7 @@ function ini_uv(n)
             end
          end
       end
-      mgpfill(fzero, p)
+      mgpfill(fzero, p, HOST)
       #@ccall "./PSOM_LIB.so".mgpfill_(Ref(fzero)::Ref{rc_kind}, pointer(p)::Ptr{rc_kind})::Cvoid
       #     filter                                                            
       for m in 1:8

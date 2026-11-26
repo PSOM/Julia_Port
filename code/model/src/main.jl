@@ -16,8 +16,9 @@ end
     using .particles
 end
 
-# Main decl                                      
-function main()
+# Initialisation (everything before the time loop of main.f90).
+# Returns (pcorr, initial_step).
+function initialize()
     step = 0::Int
 
     fdiv = 0e0::rc_kind
@@ -26,7 +27,7 @@ function main()
 
     pcorr = zeros(rc_kind, maxout)
 
-    include("../inc/ini_param.jl")
+    include(joinpath(@__DIR__, "..", "inc", "ini_param.jl"))   # relative to this file, also when called from other scripts
 
     @static if (cppdefs.relaxation)
         set_coef()
@@ -39,7 +40,7 @@ function main()
     @fortSet("hmean", hmean, rc_kind)
     #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
 
-    sigma()
+    sigma(HOST)
     #@ccall "./PSOM_LIB.so".sigma_()::Cvoid
 
     staticsigma()
@@ -54,10 +55,10 @@ function main()
     ini_uv(0)
     #@ccall "./PSOM_LIB.so".ini_uv_(Ref(0)::Ptr{Int})::Cvoid
 
-    fdiv = facediv(EPS)
+    fdiv = facediv(EPS, HOST)
     #@ccall "./PSOM_LIB.so".facediv_(Ref(EPS)::Ptr{rc_kind}, Ref(fdiv)::Ptr{rc_kind})::Cvoid
 
-    ctrdiv = cdiv(EPS, 0)
+    ctrdiv = cdiv(EPS, 0, HOST)
     #@ccall "./PSOM_LIB.so".cdiv_(Ref(EPS)::Ptr{rc_kind}, Ref(ctrdiv)::Ptr{rc_kind}, Ref(0)::Ptr{Int})::Cvoid
 
     vort(0)
@@ -115,6 +116,94 @@ function main()
 
     end
 
+    # initial output only when not restarting from a pickup (as in main.f90)
+    @static if (cppdefs.file_output)
+        if (pickup_step < -0.5)
+            @static if (cppdefs.file_output_cdf)
+                write_cdf(step, 0)
+            end
+            @static if (cppdefs.file_output_bin)
+                write_bin(step)
+            end
+        end
+    end
+
+    diag_energy(step, HOST)
+
+    # the time stepping runs on the device array set DEV (a no-op on the CPU backend)
+    to_device!()
+    return to_dev(pcorr), initial_step
+end
+
+#########################################################
+##               END OF INITIALISATION                 ##
+#########################################################
+
+# One time step (body of the time loop of main.f90)
+"true if any output (1-D/2-D/3-D fields or pickup) is written at this step"
+is_output_step(step) = mod(step, out1d_int) == 0 || mod(step, out2d_int) == 0 ||
+                       mod(step, out3d_int) == 0 || mod(step, pickup_int) == 0
+
+function step!(pcorr, step)
+    global time_nondim = dtf * step
+    @fortSet("time_nondim", time_nondim, rc_kind)
+    global time_seconds = time_nondim * TL
+    @fortSet("time_seconds", time_seconds, rc_kind)
+
+    #preproc allow_particle
+    @static if (cppdefs.allow_particle)
+        if (step == ini_particle_time)
+            println("INITIALIZATION OF PARTICLES ", NPR)
+            particles.ini_particles(step) #get the particle velocity for the first step
+            particles.get_parti_vel(step)
+            for i in 1:NP
+                parti[i].i = parti[i].i + dtf * parti[i].u
+                parti[i].j = parti[i].j + dtf * parti[i].v
+                parti[i].k = parti[i].k + dtf * parti[i].w
+                parti[i].u0 = parti[i].u
+                parti[i].v0 = parti[i].v
+                parti[i].w0 = parti[i].w
+            end
+        end
+    end
+
+    on_cpu && diag_n2()      # diagnostics only; on a GPU computed on output steps, below
+
+    #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
+    momentum(pcorr, step)
+
+    # Side effects of diag_n2budget that the next step depends on (diag_n2budget.f90 calls evalrho
+    # and vort every step): rho from the final s, T and the u, v, w ghost points. Done here on the
+    # device; diag_n2budget repeats them on the host, which gives the same values.
+    evalrho(DEV.rho, 0)
+    uvw_halo!(0)
+
+    if on_cpu
+        diag_n2budget(step)
+    elseif is_output_step(step)
+        # GPU: copy the state back for output, and compute the diagnostics that only the output
+        # uses (they depend only on the current state, so computing them every step changes nothing)
+        to_host!()
+        diag_n2()
+        diag_n2budget(step)
+    end
+
+    diag_energy(step)
+
+    global hmean = meanh_dev()
+    @fortSet("hmean", hmean, rc_kind)
+    #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
+
+    @static if (cppdefs.allow_particle)
+        if (step > ini_particle_time - 1)
+            get_parti_vel(step)
+            parti_forward()
+            if (mod(step, parti_outfreq) == 0)
+                save_parti(step)
+            end
+        end
+    end
+
     @static if (cppdefs.file_output)
         @static if (cppdefs.file_output_cdf)
             write_cdf(step, 0)
@@ -126,82 +215,16 @@ function main()
         end
     end
 
-    diag_energy(step)
-    #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
+end
 
-
-    #########################################################
-    ##               END OF INITIALISATION                 ##
-    #########################################################
-
-    istep = initial_step
-    nstep = nsteps
-
-    for step in (istep+1:istep+nstep)
-        global time_nondim = dtf * step
-        @fortSet("time_nondim", time_nondim, rc_kind)
-        global time_seconds = time_nondim * TL
-        @fortSet("time_seconds", time_seconds, rc_kind)
-
-        #preproc allow_particle
-        @static if (cppdefs.allow_particle)
-            if (step == ini_particle_time)
-                println("INITIALIZATION OF PARTICLES ", NPR)
-                particles.ini_particles(step) #get the particle velocity for the first step
-                particles.get_parti_vel(step)
-                for i in 1:NP
-                    parti[i].i = parti[i].i + dtf * parti[i].u
-                    parti[i].j = parti[i].j + dtf * parti[i].v
-                    parti[i].k = parti[i].k + dtf * parti[i].w
-                    parti[i].u0 = parti[i].u
-                    parti[i].v0 = parti[i].v
-                    parti[i].w0 = parti[i].w
-                end
-            end
-        end
-
-        diag_n2()
-        #@ccall "./PSOM_LIB.so".diag_n2_()::Cvoid
-
-        #@ccall "./PSOM_LIB.so".momentum_(pointer(pcorr)::Ptr{rc_kind}, Ref(step)::Ptr{Int})::Cvoid
-        momentum(pcorr, step)
-
-
-        diag_n2budget(step)
-        #@ccall "./PSOM_LIB.so".diag_n2budget_(Ref(step)::Ptr{Int})::Cvoid
-
-        diag_energy(step)
-        #@ccall "./PSOM_LIB.so".diag_energy_(Ref(step)::Ptr{Int})::Cvoid
-
-        global hmean = meanh(NI, NJ, h)
-        @fortSet("hmean", hmean, rc_kind)
-        #@ccall "./PSOM_LIB.so".meanh_(Ref(NI)::Ptr{Int}, Ref(NJ)::Ptr{Int}, @lkGet("h", rc_kind)::Ptr{rc_kind}, @lkGet("hmean", rc_kind)::Ptr{rc_kind})::Cvoid
-
-        @static if (cppdefs.allow_particle)
-            if (step > ini_particle_time - 1)
-                then
-                get_parti_vel(step)
-                parti_forward()
-                if (mod(step, parti_outfreq) == 0)
-                    save_parti(step)
-                end
-            end
-        end
-
-        @static if (cppdefs.file_output)
-            @static if (cppdefs.file_output_cdf)
-                write_cdf(step, 0)
-                #@ccall "./PSOM_LIB.so".write_cdf_(Ref(step)::Ptr{Int}, Ref(0)::Ptr{Int})::Cvoid
-            end
-            @static if (cppdefs.file_output_bin)
-                write_bin(step)
-                #@ccall "./PSOM_LIB.so".write_bin_(Ref(step)::Ptr{Int})::Cvoid
-            end
-        end
-
+function main()
+    pcorr, initial_step = initialize()
+    for step in (initial_step+1:initial_step+nsteps)
+        step!(pcorr, step)
     end
 end
 
-#main()
-@time main()
-#@profview main()
+# run only when executed as a script (validation/bench.jl includes this file without running it)
+if abspath(PROGRAM_FILE) == @__FILE__
+    @time main()
+end

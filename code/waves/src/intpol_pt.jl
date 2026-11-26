@@ -65,7 +65,7 @@ function intpol_pt(varc, varfx, varfy, varfz)
       end
    end
 
-   @static if (!cppdefs.periodicew)
+   @static if (!cppdefs.periodic_ew)
 
       for k in 1:NK
          for j in 1:NJ
